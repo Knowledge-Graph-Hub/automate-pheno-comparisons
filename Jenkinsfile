@@ -56,8 +56,9 @@ pipeline {
         stage('Setup') {
             steps {
                 dir('./working') {
-                    sh 'python3.9 -m pip3 install oaklib'
-                // install s3cmd too
+                	sh '/usr/bin/python3.9 -m venv venv'
+			sh '. venv/bin/activate'
+			sh './venv/bin/pip install oaklib s3cmd'
                 }
             }
         }
