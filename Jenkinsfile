@@ -67,9 +67,9 @@ pipeline {
             // TODO: verify the version of PHENIO we are using and note that...somewhere
             steps {
                 dir('./working') {
-                    sh 'runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
-                    sh 'runoak -i sqlite:obo:mp descendants -p i MP:0000001 > MP_terms.txt'
-                    sh 'runoak -i semsimian:sqlite:obo:phenio similarity -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o HP_vs_MP_semsimian.tsv'
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:mp descendants -p i MP:0000001 > MP_terms.txt'
+                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o HP_vs_MP_semsimian.tsv'
                 }
             }
         }
@@ -89,7 +89,7 @@ pipeline {
                                                               
 
                                 // upload to remote
-                                sh 's3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_MP_semsimian.tsv s3://kg-hub-public-data/monarch/'
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_MP_semsimian.tsv s3://kg-hub-public-data/monarch/'
 
                                 // Should now appear at:
                                 // https://kg-hub.berkeleybop.io/monarch/
