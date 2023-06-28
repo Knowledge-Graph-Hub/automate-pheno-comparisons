@@ -100,8 +100,6 @@ pipeline {
             }
         }
 
-    }
-
     post {
         always {
             echo 'In always'
