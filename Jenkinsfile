@@ -7,7 +7,7 @@ pipeline {
     }
     //triggers{
     //    cron('H H 1 1-12 *')
-    }
+    //}
     environment {
         BUILDSTARTDATE = sh(script: "echo `date +%Y%m%d`", returnStdout: true).trim()
         S3PROJECTDIR = '' // no trailing slash
