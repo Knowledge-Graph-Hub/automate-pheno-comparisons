@@ -2,7 +2,7 @@ pipeline {
     agent {
         docker {
             reuseNode false
-            image 'ubuntu:latest'
+            image 'caufieldjh/kg-idg:4'
         }
     }
     //triggers{
@@ -40,7 +40,7 @@ pipeline {
                     sh 'cat env.txt'
                     sh 'cat branch.txt'
                     sh "echo $BUILDSTARTDATE"
-                    sh "python3 --version"
+                    sh "python3.9 --version"
                     sh "id"
                     sh "whoami" // this should be jenkinsuser
                     // if the above fails, then the docker host didn't start the docker
@@ -56,7 +56,7 @@ pipeline {
         stage('Setup') {
             steps {
                 dir('./working') {
-                    sh 'python3 -m pip install oaklib'
+                    sh 'python3.9 -m pip install oaklib'
                 // install s3cmd too
                 }
             }
