@@ -56,7 +56,7 @@ pipeline {
         stage('Setup') {
             steps {
                 dir('./working') {
-                    sh 'python3.9 -m pip install oaklib'
+                    sh 'python3.9 -m pip3 install oaklib'
                 // install s3cmd too
                 }
             }
