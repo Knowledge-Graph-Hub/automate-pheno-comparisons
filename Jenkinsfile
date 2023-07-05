@@ -58,7 +58,7 @@ pipeline {
                 dir('./working') {
                 	sh '/usr/bin/python3.9 -m venv venv'
 			sh '. venv/bin/activate'
-			sh './venv/bin/pip install git+https://github.com/INCATools/ontology-access-kit.git@606-similarity-with-semsimian-raises-an-error-from-curies
+			sh './venv/bin/pip install git+https://github.com/INCATools/ontology-access-kit.git@606-similarity-with-semsimian-raises-an-error-from-curies'
 			sh './venv/bin/pip install s3cmd'
                 }
             }
