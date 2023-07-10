@@ -70,7 +70,7 @@ pipeline {
                 dir('./working') {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:mp descendants -p i MP:0000001 > MP_terms.txt'
-                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o HP_vs_MP_semsimian.tsv'
+                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o HP_vs_MP_semsimian.tsv --min_ancestor_information_content 4.0'
                 }
             }
         }
@@ -78,7 +78,7 @@ pipeline {
         stage('Upload result') {
             // Store similarity results at s3://kg-hub-public-data/monarch/
             steps {
-                dir('./gitrepo') {
+                dir('./working') {
                     script {
 
                         // make sure we aren't going to clobber existing data
