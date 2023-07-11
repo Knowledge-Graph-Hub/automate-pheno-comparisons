@@ -21,8 +21,6 @@ pipeline {
         disableConcurrentBuilds()
     }
     stages {
-        // Very first: pause for a minute to give a chance to
-        // cancel and clean the workspace before use.
         stage('Ready and clean') {
             steps {
                 // Give us a minute to cancel if we want.
@@ -58,8 +56,7 @@ pipeline {
                 dir('./working') {
                 	sh '/usr/bin/python3.9 -m venv venv'
 			sh '. venv/bin/activate'
-			sh './venv/bin/pip install oaklib'
-			sh './venv/bin/pip install s3cmd'
+			sh './venv/bin/pip install oaklib s3cmd'
                 }
             }
         }
@@ -70,7 +67,7 @@ pipeline {
                 dir('./working') {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:mp descendants -p i MP:0000001 > MP_terms.txt'
-                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o HP_vs_MP_semsimian.tsv --min-ancestor-information-content 4.0'
+                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o HP_vs_MP_semsimian.tsv --min-ancestor-information-content 4.0'
                 }
             }
         }
@@ -80,8 +77,6 @@ pipeline {
             steps {
                 dir('./working') {
                     script {
-
-                        // make sure we aren't going to clobber existing data
                             withCredentials([
 					            file(credentialsId: 's3cmd_kg_hub_push_configuration', variable: 'S3CMD_CFG'),
 					            file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
@@ -90,8 +85,8 @@ pipeline {
                                                               
 
                                 // upload to remote
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_MP_semsimian.tsv s3://kg-hub-public-data/monarch/'
-
+				sh 'tar -czvf HP_vs_MP_semsimian.tsv.tar.gz HP_vs_MP_semsimian.tsv'
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_MP_semsimian.tsv.tar.gz s3://kg-hub-public-data/monarch/'
                                 // Should now appear at:
                                 // https://kg-hub.berkeleybop.io/monarch/
                             }
