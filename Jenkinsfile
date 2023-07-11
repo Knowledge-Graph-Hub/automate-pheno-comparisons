@@ -21,8 +21,6 @@ pipeline {
         disableConcurrentBuilds()
     }
     stages {
-        // Very first: pause for a minute to give a chance to
-        // cancel and clean the workspace before use.
         stage('Ready and clean') {
             steps {
                 // Give us a minute to cancel if we want.
@@ -79,8 +77,6 @@ pipeline {
             steps {
                 dir('./working') {
                     script {
-
-                        // make sure we aren't going to clobber existing data
                             withCredentials([
 					            file(credentialsId: 's3cmd_kg_hub_push_configuration', variable: 'S3CMD_CFG'),
 					            file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
@@ -91,7 +87,6 @@ pipeline {
                                 // upload to remote
 				sh 'tar -czvf HP_vs_MP_semsimian.tsv.tar.gz HP_vs_MP_semsimian.tsv'
                                 sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_MP_semsimian.tsv.tar.gz s3://kg-hub-public-data/monarch/'
-
                                 // Should now appear at:
                                 // https://kg-hub.berkeleybop.io/monarch/
                             }
