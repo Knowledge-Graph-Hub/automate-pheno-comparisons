@@ -58,8 +58,7 @@ pipeline {
                 dir('./working') {
                 	sh '/usr/bin/python3.9 -m venv venv'
 			sh '. venv/bin/activate'
-			sh './venv/bin/pip install oaklib'
-			sh './venv/bin/pip install s3cmd'
+			sh './venv/bin/pip install oaklib s3cmd'
                 }
             }
         }
@@ -90,7 +89,8 @@ pipeline {
                                                               
 
                                 // upload to remote
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_MP_semsimian.tsv s3://kg-hub-public-data/monarch/'
+				sh 'tar -czvf HP_vs_MP_semsimian.tsv.tar.gz HP_vs_MP_semsimian.tsv'
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_MP_semsimian.tsv.tar.gz s3://kg-hub-public-data/monarch/'
 
                                 // Should now appear at:
                                 // https://kg-hub.berkeleybop.io/monarch/
