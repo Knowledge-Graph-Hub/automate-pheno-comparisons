@@ -56,7 +56,7 @@ pipeline {
                 dir('./working') {
                 	sh '/usr/bin/python3.9 -m venv venv'
 			sh '. venv/bin/activate'
-			sh './venv/bin/pip install oaklib s3cmd'
+			sh './venv/bin/pip install oaklib==0.5.13rc1 s3cmd'
                 }
             }
         }
