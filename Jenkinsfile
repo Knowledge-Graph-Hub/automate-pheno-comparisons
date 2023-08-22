@@ -12,6 +12,8 @@ pipeline {
         BUILDSTARTDATE = sh(script: "echo `date +%Y%m%d`", returnStdout: true).trim()
         S3PROJECTDIR = '' // no trailing slash
 
+	RESNIK_THRESHOLD = '4.0' // value for min-ancestor-information-content parameter
+
         // Distribution ID for the AWS CloudFront for this bucket
         // used solely for invalidations
         AWS_CLOUDFRONT_DISTRIBUTION_ID = 'EUVSWXZQBXCFP'
@@ -67,7 +69,7 @@ pipeline {
                 dir('./working') {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:mp descendants -p i MP:0000001 > MP_terms.txt'
-                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o HP_vs_MP_semsimian.tsv --min-ancestor-information-content 4.0'
+                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o HP_vs_MP_semsimian.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                 }
             }
         }
