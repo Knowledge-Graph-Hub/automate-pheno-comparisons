@@ -67,9 +67,9 @@ pipeline {
             steps {
                 dir('./working') {
 		    sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all'
-                    sh 'runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
-                    sh 'runoak -i sqlite:obo:mp descendants -p i MP:0000001 > MP_terms.txt'
-                    sh 'runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o HP_vs_MP_semsimian.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:mp descendants -p i MP:0000001 > MP_terms.txt'
+                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o HP_vs_MP_semsimian.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                 }
             }
         }
