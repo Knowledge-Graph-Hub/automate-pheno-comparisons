@@ -12,6 +12,8 @@ pipeline {
         BUILDSTARTDATE = sh(script: "echo `date +%Y%m%d`", returnStdout: true).trim()
         S3PROJECTDIR = '' // no trailing slash
 
+	RESNIK_THRESHOLD = '4.0' // value for min-ancestor-information-content parameter
+
         // Distribution ID for the AWS CloudFront for this bucket
         // used solely for invalidations
         AWS_CLOUDFRONT_DISTRIBUTION_ID = 'EUVSWXZQBXCFP'
@@ -56,18 +58,18 @@ pipeline {
                 dir('./working') {
                 	sh '/usr/bin/python3.9 -m venv venv'
 			sh '. venv/bin/activate'
-			sh './venv/bin/pip install oaklib==0.5.13rc1 s3cmd'
+			sh './venv/bin/pip install oaklib s3cmd'
                 }
             }
         }
 
         stage('Run similarity ') {
-            // TODO: verify the version of PHENIO we are using and note that...somewhere
             steps {
                 dir('./working') {
-                    sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
-                    sh '. venv/bin/activate && runoak -i sqlite:obo:mp descendants -p i MP:0000001 > MP_terms.txt'
-                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o HP_vs_MP_semsimian.tsv --min-ancestor-information-content 4.0'
+		    sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all'
+                    sh 'runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
+                    sh 'runoak -i sqlite:obo:mp descendants -p i MP:0000001 > MP_terms.txt'
+                    sh 'runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o HP_vs_MP_semsimian.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                 }
             }
         }
