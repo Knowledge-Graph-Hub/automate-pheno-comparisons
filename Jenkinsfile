@@ -60,7 +60,9 @@ pipeline {
 			        sh '. venv/bin/activate'
 			        sh './venv/bin/pip install oaklib s3cmd'
                     // Get metadata for PHENIO
-                    sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all'
+                    sh 'runoak -i sqlite:obo:phenio ontology-metadata --all'
+                    // Retrieve association tables
+                    sh 'curl -L -s http://purl.obolibrary.org/obo/hp/hpoa/phenotype.hpoa > hpoa.tsv'
                 }
             }
         }
@@ -69,6 +71,7 @@ pipeline {
             steps {
                 dir('./working') {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
+                    sh '. venv/bin/activate && runoak -g hpoa.tsv -G hpoa -i sqlite:obo:phenio information-content -p i --use-associations .all > hpoa_ic.tsv'
                     sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel -p i --set1-file HPO_terms.txt --set2-file HPO_terms.txt -O csv -o HP_vs_HP_semsimian.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                 }
             }
