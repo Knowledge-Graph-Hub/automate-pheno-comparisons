@@ -59,6 +59,8 @@ pipeline {
                 	sh '/usr/bin/python3.9 -m venv venv'
 			        sh '. venv/bin/activate'
 			        sh './venv/bin/pip install oaklib s3cmd'
+                    // Get metadata for PHENIO
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all'
                 }
             }
         }
@@ -66,7 +68,6 @@ pipeline {
         stage('Run similarity for HP vs HP') {
             steps {
                 dir('./working') {
-		            sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
                     sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel -p i --set1-file HPO_terms.txt --set2-file HPO_terms.txt -O csv -o HP_vs_HP_semsimian.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                 }
