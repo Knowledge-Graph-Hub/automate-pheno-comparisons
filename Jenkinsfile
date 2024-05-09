@@ -63,6 +63,8 @@ pipeline {
                     sh 'runoak -i sqlite:obo:phenio ontology-metadata --all'
                     // Retrieve association tables
                     sh 'curl -L -s http://purl.obolibrary.org/obo/hp/hpoa/phenotype.hpoa > hpoa.tsv'
+                    sh 'curl -L -s https://data.monarchinitiative.org/latest/tsv/gene_associations/gene_phenotype.10090.tsv.gz | gunzip - > mpa.tsv'
+                    sh 'curl -L -s https://data.monarchinitiative.org/latest/tsv/gene_associations/gene_phenotype.7955.tsv.gz | gunzip - > zpa.tsv'
                 }
             }
         }
@@ -107,6 +109,7 @@ pipeline {
 		            sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:mp descendants -p i MP:0000001 > MP_terms.txt'
+                    sh '. venv/bin/activate && runoak -g mpa.tsv -G hpoa_g2p -i sqlite:obo:phenio information-content -p i --use-associations .all > mpa_ic.tsv'
                     sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o HP_vs_MP_semsimian.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                 }
             }
@@ -141,7 +144,8 @@ pipeline {
                 dir('./working') {
 		            sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
-                    sh '. venv/bin/activate && runoak -i sqlite:obo:mp descendants -p i ZP:0000000 > ZP_terms.txt'
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:zp descendants -p i ZP:0000000 > ZP_terms.txt'
+                    sh '. venv/bin/activate && runoak -g zpa.tsv -G hpoa_g2p -i sqlite:obo:phenio information-content -p i --use-associations .all > zpa_ic.tsv'
                     sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel -p i --set1-file HPO_terms.txt --set2-file ZP_terms.txt -O csv -o HP_vs_ZP_semsimian.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                 }
             }
