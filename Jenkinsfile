@@ -92,7 +92,7 @@ pipeline {
                                                               
 
                                 // upload to remote
-				                sh 'tar -czvf HP_vs_MP_semsimian.tsv.tar.gz HP_vs_HP_semsimian.tsv'
+				                sh 'tar -czvf HP_vs_HP_semsimian.tsv.tar.gz HP_vs_HP_semsimian.tsv'
                                 sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_HP_semsimian.tsv.tar.gz s3://kg-hub-public-data/monarch/'
                                 // Should now appear at:
                                 // https://kg-hub.berkeleybop.io/monarch/
@@ -162,9 +162,8 @@ pipeline {
 					            string(credentialsId: 'aws_kg_hub_access_key', variable: 'AWS_ACCESS_KEY_ID'),
 					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
                                                               
-
                                 // upload to remote
-				                sh 'tar -czvf HP_vs_MP_semsimian.tsv.tar.gz HP_vs_ZP_semsimian.tsv'
+				                sh 'tar -czvf HP_vs_ZP_semsimian.tsv.tar.gz HP_vs_ZP_semsimian.tsv'
                                 sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_ZP_semsimian.tsv.tar.gz s3://kg-hub-public-data/monarch/'
                                 // Should now appear at:
                                 // https://kg-hub.berkeleybop.io/monarch/
