@@ -34,6 +34,7 @@ pipeline {
             steps {
                 // print some info
                 dir('./working') {
+                    sh 'echo "TEST BUILD ONLY"'
                     sh 'env > env.txt'
                     sh 'echo $BRANCH_NAME > branch.txt'
                     sh 'echo "$BRANCH_NAME"'
