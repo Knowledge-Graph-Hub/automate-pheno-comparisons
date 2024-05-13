@@ -61,7 +61,7 @@ pipeline {
 			        sh '. venv/bin/activate'
 			        sh './venv/bin/pip install oaklib s3cmd'
                     // Get metadata for PHENIO
-                    sh 'runoak -i sqlite:obo:phenio ontology-metadata --all'
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all'
                     // Retrieve association tables
                     sh 'curl -L -s http://purl.obolibrary.org/obo/hp/hpoa/phenotype.hpoa > hpoa.tsv'
                     sh 'curl -L -s https://data.monarchinitiative.org/latest/tsv/gene_associations/gene_phenotype.10090.tsv.gz | gunzip - > mpa.tsv'
