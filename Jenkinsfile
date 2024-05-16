@@ -58,7 +58,8 @@ pipeline {
                 dir('./working') {
                 	sh '/usr/bin/python3.9 -m venv venv'
 			        sh '. venv/bin/activate'
-			        sh './venv/bin/pip install oaklib s3cmd'
+			        sh './venv/bin/pip install s3cmd'
+                    sh './venv/bin/pip install git+https://github.com/INCATools/ontology-access-kit.git'
                     // Get metadata for PHENIO
                     sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all'
                     // Retrieve association tables
