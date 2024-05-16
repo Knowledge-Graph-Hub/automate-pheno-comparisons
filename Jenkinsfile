@@ -10,7 +10,7 @@ pipeline {
     //}
     environment {
         BUILDSTARTDATE = sh(script: "echo `date +%Y%m%d`", returnStdout: true).trim()
-        S3PROJECTDIR = '' // no trailing slash
+        S3PROJECTDIR = 's3://kg-hub-public-data/monarch/semsim/'
 
 	    RESNIK_THRESHOLD = '4.0' // value for min-ancestor-information-content parameter
 
@@ -94,7 +94,7 @@ pipeline {
 
                                 // upload to remote
 				                sh 'tar -czvf HP_vs_HP_semsimian.tsv.tar.gz HP_vs_HP_semsimian.tsv'
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_HP_semsimian.tsv.tar.gz s3://kg-hub-public-data/monarch/'
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_HP_semsimian.tsv.tar.gz $S3PROJECTDIR'
                                 // Should now appear at:
                                 // https://kg-hub.berkeleybop.io/monarch/
                             }
@@ -129,7 +129,7 @@ pipeline {
 
                                 // upload to remote
 				                sh 'tar -czvf HP_vs_MP_semsimian.tsv.tar.gz HP_vs_MP_semsimian.tsv'
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_MP_semsimian.tsv.tar.gz s3://kg-hub-public-data/monarch/'
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_MP_semsimian.tsv.tar.gz $S3PROJECTDIR'
                                 // Should now appear at:
                                 // https://kg-hub.berkeleybop.io/monarch/
                             }
@@ -163,7 +163,7 @@ pipeline {
                                                               
                                 // upload to remote
 				                sh 'tar -czvf HP_vs_ZP_semsimian.tsv.tar.gz HP_vs_ZP_semsimian.tsv'
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_ZP_semsimian.tsv.tar.gz s3://kg-hub-public-data/monarch/'
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_ZP_semsimian.tsv.tar.gz $S3PROJECTDIR'
                                 // Should now appear at:
                                 // https://kg-hub.berkeleybop.io/monarch/
                             }
