@@ -109,7 +109,6 @@ pipeline {
         stage('Run similarity for HP vs MP') {
             steps {
                 dir('./working') {
-		            sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:mp descendants -p i MP:0000001 > MP_terms.txt'
                     sh '. venv/bin/activate && runoak -g mpa.tsv -G hpoa_g2p -i sqlite:obo:phenio information-content -p i --use-associations .all > mpa_ic.tsv && tail -n +2 "mpa_ic.tsv" > "mpa_ic.tsv.tmp" && mv "mpa_ic.tsv.tmp" "mpa_ic.tsv"'
                     sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file mpa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o $HP_VS_MP_PREFIX$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
@@ -141,7 +140,6 @@ pipeline {
         stage('Run similarity for HP vs ZP') {
             steps {
                 dir('./working') {
-		            sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:zp descendants -p i ZP:0000000 > ZP_terms.txt'
                     sh '. venv/bin/activate && runoak -g zpa.tsv -G hpoa_g2p -i sqlite:obo:phenio information-content -p i --use-associations .all > zpa_ic.tsv && tail -n +2 "zpa_ic.tsv" > "zpa_ic.tsv.tmp" && mv "zpa_ic.tsv.tmp" "zpa_ic.tsv"'
                     sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file zpa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file ZP_terms.txt -O csv -o $HP_VS_ZP_PREFIX$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
