@@ -15,9 +15,10 @@ pipeline {
 
 	    RESNIK_THRESHOLD = '1.5' // value for min-ancestor-information-content parameter
 
-        HP_VS_HP_PREFIX = "HP_vs_HP_semsimian_"
-        HP_VS_MP_PREFIX = "HP_vs_MP_semsimian_"
-        HP_VS_ZP_PREFIX = "HP_vs_ZP_semsimian_"
+        HP_VS_HP_PREFIX = "HP_vs_HP_semsimian_phenio"
+        HP_VS_HP_PREFIX_ONTOONLY = "HP_vs_HP_semsimian_hp"
+        HP_VS_MP_PREFIX = "HP_vs_MP_semsimian_phenio"
+        HP_VS_ZP_PREFIX = "HP_vs_ZP_semsimian_phenio"
 
         // Distribution ID for the AWS CloudFront for this bucket
         // used solely for invalidations
@@ -79,17 +80,17 @@ pipeline {
             }
         }
 
-        stage('Run similarity for HP vs HP') {
+        stage('Run similarity for HP vs HP through PHENIO') {
             steps {
                 dir('./working') {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
                     sh '. venv/bin/activate && runoak -g hpoa.tsv -G hpoa -i sqlite:obo:phenio information-content -p i --use-associations .all > hpoa_ic.tsv && tail -n +2 "hpoa_ic.tsv" > "hpoa_ic.tsv.tmp" && mv "hpoa_ic.tsv.tmp" "hpoa_ic.tsv"'
-                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file hpoa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file HPO_terms.txt -O csv -o $HP_VS_HP_PREFIX$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
+                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file hpoa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file HPO_terms.txt -O csv -o $HP_VS_HP_PREFIX_$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                 }
             }
         }
 
-        stage('Upload results for HP vs HP') {
+        stage('Upload results for HP vs HP through PHENIO') {
             steps {
                 dir('./working') {
                     script {
@@ -100,8 +101,37 @@ pipeline {
 					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
                                                               
                                 // upload to remote
-				                sh 'tar -czvf HP_vs_HP_semsimian.tsv.tar.gz $HP_VS_HP_PREFIX$BUILDSTARTDATE.tsv hpoa_ic.tsv'
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_HP_semsimian.tsv.tar.gz $S3PROJECTDIR'
+				                sh 'tar -czvf $HP_VS_HP_PREFIX.tsv.tar.gz $HP_VS_HP_PREFIX_$BUILDSTARTDATE.tsv hpoa_ic.tsv'
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_HP_PREFIX.tsv.tar.gz $S3PROJECTDIR'
+                            }
+
+                        }
+                    }
+                }
+            }
+        stage('Run similarity for HP vs HP through HP alone') {
+            steps {
+                dir('./working') {
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
+                    sh '. venv/bin/activate && runoak -g hpoa.tsv -G hpoa -i sqlite:obo:hp information-content -p i --use-associations .all > hpoa_ic.tsv && tail -n +2 "hpoa_ic.tsv" > "hpoa_ic.tsv.tmp" && mv "hpoa_ic.tsv.tmp" "hpoa_ic.tsv"'
+                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:hp similarity --no-autolabel --information-content-file hpoa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file HPO_terms.txt -O csv -o $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
+                }
+            }
+        }
+
+        stage('Upload results for HP vs HP through HP alone') {
+            steps {
+                dir('./working') {
+                    script {
+                            withCredentials([
+					            file(credentialsId: 's3cmd_kg_hub_push_configuration', variable: 'S3CMD_CFG'),
+					            file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
+					            string(credentialsId: 'aws_kg_hub_access_key', variable: 'AWS_ACCESS_KEY_ID'),
+					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
+                                                              
+                                // upload to remote
+				                sh 'tar -czvf HP_VS_HP_PREFIX_ONTOONLY.tsv.tar.gz $HP_VS_HP_PREFIX_ONTOONLY$BUILDSTARTDATE.tsv hpoa_ic.tsv'
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_HP_PREFIX_ONTOONLY.tsv.tar.gz $S3PROJECTDIR'
                             }
 
                         }
@@ -109,17 +139,17 @@ pipeline {
                 }
             }
 
-        stage('Run similarity for HP vs MP') {
+        stage('Run similarity for HP vs MP through PHENIO') {
             steps {
                 dir('./working') {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:mp descendants -p i MP:0000001 > MP_terms.txt'
                     sh '. venv/bin/activate && runoak -g mpa.tsv -G g2t -i sqlite:obo:phenio information-content -p i --use-associations .all > mpa_ic.tsv && tail -n +2 "mpa_ic.tsv" > "mpa_ic.tsv.tmp" && mv "mpa_ic.tsv.tmp" "mpa_ic.tsv"'
-                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file mpa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o $HP_VS_MP_PREFIX$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
+                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file mpa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o $HP_VS_MP_PREFIX_$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                 }
             }
         }
 
-        stage('Upload results for HP vs MP') {
+        stage('Upload results for HP vs MP through PHENIO') {
             steps {
                 dir('./working') {
                     script {
@@ -130,8 +160,8 @@ pipeline {
 					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
                                                               
                                 // upload to remote
-				                sh 'tar -czvf HP_vs_MP_semsimian.tsv.tar.gz $HP_VS_MP_PREFIX$BUILDSTARTDATE.tsv mpa_ic.tsv'
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_MP_semsimian.tsv.tar.gz $S3PROJECTDIR'
+				                sh 'tar -czvf $HP_VS_MP_PREFIX.tsv.tar.gz $HP_VS_MP_PREFIX_$BUILDSTARTDATE.tsv mpa_ic.tsv'
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_MP_PREFIX.tsv.tar.gz $S3PROJECTDIR'
 
                             }
 
@@ -140,17 +170,17 @@ pipeline {
                 }
             }
 
-        stage('Run similarity for HP vs ZP') {
+        stage('Run similarity for HP vs ZP through PHENIO') {
             steps {
                 dir('./working') {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:zp descendants -p i ZP:0000000 > ZP_terms.txt'
                     sh '. venv/bin/activate && runoak -g zpa.tsv -G g2t -i sqlite:obo:phenio information-content -p i --use-associations .all > zpa_ic.tsv && tail -n +2 "zpa_ic.tsv" > "zpa_ic.tsv.tmp" && mv "zpa_ic.tsv.tmp" "zpa_ic.tsv"'
-                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file zpa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file ZP_terms.txt -O csv -o $HP_VS_ZP_PREFIX$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
+                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file zpa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file ZP_terms.txt -O csv -o $HP_VS_ZP_PREFIX_$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                 }
             }
         }
 
-        stage('Upload results for HP vs ZP') {
+        stage('Upload results for HP vs ZP through PHENIO') {
             steps {
                 dir('./working') {
                     script {
@@ -161,8 +191,8 @@ pipeline {
 					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
                                                               
                                 // upload to remote
-				                sh 'tar -czvf HP_vs_ZP_semsimian.tsv.tar.gz $HP_VS_ZP_PREFIX$BUILDSTARTDATE.tsv zpa_ic.tsv'
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate HP_vs_ZP_semsimian.tsv.tar.gz $S3PROJECTDIR'
+				                sh 'tar -czvf $HP_VS_ZP_PREFIX.tsv.tar.gz $HP_VS_ZP_PREFIX_$BUILDSTARTDATE.tsv zpa_ic.tsv'
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_ZP_PREFIX.tsv.tar.gz $S3PROJECTDIR'
                             }
 
                         }
