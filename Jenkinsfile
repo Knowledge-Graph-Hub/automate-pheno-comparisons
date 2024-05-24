@@ -67,6 +67,9 @@ pipeline {
 			        sh '. venv/bin/activate'
 			        sh './venv/bin/pip install s3cmd'
                     sh './venv/bin/pip install "oaklib[semsimian] @ git+https://github.com/INCATools/ontology-access-kit.git"'
+                    // Install duckdb
+                    sh 'wget https://github.com/duckdb/duckdb/releases/download/v0.10.3/duckdb_cli-linux-amd64.zip'
+                    sh 'unzip duckdb_cli-linux-amd64.zip'
                     // Get metadata for PHENIO
                     sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all'
                     // Retrieve association tables
