@@ -91,9 +91,9 @@ pipeline {
                     sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file hpoa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file HPO_terms.txt -O csv -o $HP_VS_HP_PREFIX_$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                     sh '. venv/bin/activate && ./duckdb -c "CREATE TABLE semsim AS SELECT * FROM read_csv(\'$HP_VS_HP_PREFIX_$BUILDSTARTDATE.tsv\', header=TRUE); CREATE TABLE labels AS SELECT * FROM read_csv(\'~/automate-pheno-comparisons/HPO_terms.tsv\', header=FALSE); CREATE TABLE labeled1 AS SELECT * FROM semsim n JOIN labels r ON (subject_id = column0); CREATE TABLE labeled2 AS SELECT * FROM labeled1 n JOIN labels r ON (object_id = r.column0); ALTER TABLE labeled2 DROP subject_label; ALTER TABLE labeled2 DROP object_label; ALTER TABLE labeled2 RENAME column1 TO subject_label; ALTER TABLE labeled2 RENAME column1_1 TO object_label; ALTER TABLE labeled2 DROP column0; ALTER TABLE labeled2 DROP column0_1; COPY (SELECT subject_id, subject_label, subject_source, object_id, object_label, object_source, ancestor_id, ancestor_label, ancestor_source, object_information_content, subject_information_content, ancestor_information_content, jaccard_similarity, cosine_similarity, dice_similarity, phenodigm_score FROM labeled2) TO \'$HP_VS_HP_PREFIX_$BUILDSTARTDATE.tsv.tmp\' WITH (HEADER true, DELIMITER \'\t\')" && mv "$HP_VS_HP_PREFIX_$BUILDSTARTDATE.tsv.tmp" "$HP_VS_HP_PREFIX_$BUILDSTARTDATE.tsv"'
                     sh '. venv/bin/activate && SHORTHIST=$(history | tail -4 | head -3 | cut -c 8-)'                    
-                    sh '. echo "name: $HP_VS_HP_PREFIX_$BUILDSTARTDATE" > $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
-                    sh '. echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
-                    sh '. echo "commands: >> $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "name: $HP_VS_HP_PREFIX_$BUILDSTARTDATE" > $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "commands: >> $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
                     sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
                 }
             }
@@ -126,9 +126,9 @@ pipeline {
                     sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:hp similarity --no-autolabel --information-content-file hpoa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file HPO_terms.txt -O csv -o $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                     sh '. venv/bin/activate && ./duckdb -c "CREATE TABLE semsim AS SELECT * FROM read_csv(\'$HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE.tsv\', header=TRUE); CREATE TABLE labels AS SELECT * FROM read_csv(\'~/automate-pheno-comparisons/HPO_terms.tsv\', header=FALSE); CREATE TABLE labeled1 AS SELECT * FROM semsim n JOIN labels r ON (subject_id = column0); CREATE TABLE labeled2 AS SELECT * FROM labeled1 n JOIN labels r ON (object_id = r.column0); ALTER TABLE labeled2 DROP subject_label; ALTER TABLE labeled2 DROP object_label; ALTER TABLE labeled2 RENAME column1 TO subject_label; ALTER TABLE labeled2 RENAME column1_1 TO object_label; ALTER TABLE labeled2 DROP column0; ALTER TABLE labeled2 DROP column0_1; COPY (SELECT subject_id, subject_label, subject_source, object_id, object_label, object_source, ancestor_id, ancestor_label, ancestor_source, object_information_content, subject_information_content, ancestor_information_content, jaccard_similarity, cosine_similarity, dice_similarity, phenodigm_score FROM labeled2) TO \'$HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE.tsv.tmp\' WITH (HEADER true, DELIMITER \'\t\')" && mv "$HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE.tsv.tmp" "$HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE.tsv"'
                     sh '. venv/bin/activate && SHORTHIST=$(history | tail -4 | head -3 | cut -c 8-)'                    
-                    sh '. echo "name: $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE" > $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
-                    sh '. echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
-                    sh '. echo "commands: >> $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "name: $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE" > $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "commands: >> $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
                     sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
                 }
             }
@@ -163,9 +163,9 @@ pipeline {
                     sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file mpa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o $HP_VS_MP_PREFIX_$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                     sh '. venv/bin/activate && ./duckdb -c "CREATE TABLE semsim AS SELECT * FROM read_csv(\'$HP_VS_MP_PREFIX_$BUILDSTARTDATE.tsv\', header=TRUE); CREATE TABLE labels AS SELECT * FROM read_csv(\'HP_MP_terms.tsv\', header=FALSE); CREATE TABLE labeled1 AS SELECT * FROM semsim n JOIN labels r ON (subject_id = column0); CREATE TABLE labeled2 AS SELECT * FROM labeled1 n JOIN labels r ON (object_id = r.column0); ALTER TABLE labeled2 DROP subject_label; ALTER TABLE labeled2 DROP object_label; ALTER TABLE labeled2 RENAME column1 TO subject_label; ALTER TABLE labeled2 RENAME column1_1 TO object_label; ALTER TABLE labeled2 DROP column0; ALTER TABLE labeled2 DROP column0_1; COPY (SELECT subject_id, subject_label, subject_source, object_id, object_label, object_source, ancestor_id, ancestor_label, ancestor_source, object_information_content, subject_information_content, ancestor_information_content, jaccard_similarity, cosine_similarity, dice_similarity, phenodigm_score FROM labeled2) TO \'$HP_VS_MP_PREFIX_$BUILDSTARTDATE.tsv.tmp\' WITH (HEADER true, DELIMITER \'\t\')" && mv "$HP_VS_MP_PREFIX_$BUILDSTARTDATE.tsv.tmp" "$HP_VS_MP_PREFIX_$BUILDSTARTDATE.tsv"'
                     sh '. venv/bin/activate && SHORTHIST=$(history | tail -4 | head -3 | cut -c 8-)'                    
-                    sh '. echo "name: $HP_VS_MP_PREFIX_$BUILDSTARTDATE" > $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
-                    sh '. echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
-                    sh '. echo "commands: >> $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "name: $HP_VS_MP_PREFIX_$BUILDSTARTDATE" > $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "commands: >> $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
                     sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
                 }
             }
@@ -201,9 +201,9 @@ pipeline {
                     sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file zpa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file ZP_terms.txt -O csv -o $HP_VS_ZP_PREFIX_$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                     sh '. venv/bin/activate && ./duckdb -c "CREATE TABLE semsim AS SELECT * FROM read_csv(\'$HP_VS_ZP_PREFIX_$BUILDSTARTDATE.tsv\', header=TRUE); CREATE TABLE labels AS SELECT * FROM read_csv(\'HP_ZP_terms.tsv\', header=FALSE); CREATE TABLE labeled1 AS SELECT * FROM semsim n JOIN labels r ON (subject_id = column0); CREATE TABLE labeled2 AS SELECT * FROM labeled1 n JOIN labels r ON (object_id = r.column0); ALTER TABLE labeled2 DROP subject_label; ALTER TABLE labeled2 DROP object_label; ALTER TABLE labeled2 RENAME column1 TO subject_label; ALTER TABLE labeled2 RENAME column1_1 TO object_label; ALTER TABLE labeled2 DROP column0; ALTER TABLE labeled2 DROP column0_1; COPY (SELECT subject_id, subject_label, subject_source, object_id, object_label, object_source, ancestor_id, ancestor_label, ancestor_source, object_information_content, subject_information_content, ancestor_information_content, jaccard_similarity, cosine_similarity, dice_similarity, phenodigm_score FROM labeled2) TO \'$HP_VS_MP_PREFIX_$BUILDSTARTDATE.tsv.tmp\' WITH (HEADER true, DELIMITER \'\t\')" && mv "$HP_VS_ZP_PREFIX_$BUILDSTARTDATE.tsv.tmp" "$HP_VS_ZP_PREFIX_$BUILDSTARTDATE.tsv"'
                     sh '. venv/bin/activate && SHORTHIST=$(history | tail -4 | head -3 | cut -c 8-)'                    
-                    sh '. echo "name: $HP_VS_ZP_PREFIX_$BUILDSTARTDATE" > $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
-                    sh '. echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
-                    sh '. echo "commands: >> $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "name: $HP_VS_ZP_PREFIX_$BUILDSTARTDATE" > $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "commands: >> $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
                     sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
                 }
             }
