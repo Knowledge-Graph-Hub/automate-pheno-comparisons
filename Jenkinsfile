@@ -86,6 +86,11 @@ pipeline {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
                     sh '. venv/bin/activate && runoak -g hpoa.tsv -G hpoa -i sqlite:obo:phenio information-content -p i --use-associations .all > hpoa_ic.tsv && tail -n +2 "hpoa_ic.tsv" > "hpoa_ic.tsv.tmp" && mv "hpoa_ic.tsv.tmp" "hpoa_ic.tsv"'
                     sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file hpoa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file HPO_terms.txt -O csv -o $HP_VS_HP_PREFIX_$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
+                    sh '. venv/bin/activate && SHORTHIST=$(history | tail -4 | head -3 | cut -c 8-)'                    
+                    sh '. echo "name: $HP_VS_HP_PREFIX_$BUILDSTARTDATE" > $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh '. echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh '. echo "commands: >> $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
                 }
             }
         }
@@ -101,7 +106,7 @@ pipeline {
 					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
                                                               
                                 // upload to remote
-				                sh 'tar -czvf $HP_VS_HP_PREFIX.tsv.tar.gz $HP_VS_HP_PREFIX_$BUILDSTARTDATE.tsv hpoa_ic.tsv'
+				                sh 'tar -czvf $HP_VS_HP_PREFIX.tsv.tar.gz $HP_VS_HP_PREFIX_$BUILDSTARTDATE.tsv $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml hpoa_ic.tsv'
                                 sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_HP_PREFIX.tsv.tar.gz $S3PROJECTDIR'
                             }
 
@@ -115,6 +120,11 @@ pipeline {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt'
                     sh '. venv/bin/activate && runoak -g hpoa.tsv -G hpoa -i sqlite:obo:hp information-content -p i --use-associations .all > hpoa_ic.tsv && tail -n +2 "hpoa_ic.tsv" > "hpoa_ic.tsv.tmp" && mv "hpoa_ic.tsv.tmp" "hpoa_ic.tsv"'
                     sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:hp similarity --no-autolabel --information-content-file hpoa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file HPO_terms.txt -O csv -o $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
+                    sh '. venv/bin/activate && SHORTHIST=$(history | tail -4 | head -3 | cut -c 8-)'                    
+                    sh '. echo "name: $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE" > $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
+                    sh '. echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
+                    sh '. echo "commands: >> $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
+                    sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
                 }
             }
         }
@@ -130,7 +140,7 @@ pipeline {
 					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
                                                               
                                 // upload to remote
-				                sh 'tar -czvf HP_VS_HP_PREFIX_ONTOONLY.tsv.tar.gz $HP_VS_HP_PREFIX_ONTOONLY$BUILDSTARTDATE.tsv hpoa_ic.tsv'
+				                sh 'tar -czvf HP_VS_HP_PREFIX_ONTOONLY.tsv.tar.gz $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE.tsv $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml hpoa_ic.tsv'
                                 sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_HP_PREFIX_ONTOONLY.tsv.tar.gz $S3PROJECTDIR'
                             }
 
@@ -145,6 +155,11 @@ pipeline {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:mp descendants -p i MP:0000001 > MP_terms.txt'
                     sh '. venv/bin/activate && runoak -g mpa.tsv -G g2t -i sqlite:obo:phenio information-content -p i --use-associations .all > mpa_ic.tsv && tail -n +2 "mpa_ic.tsv" > "mpa_ic.tsv.tmp" && mv "mpa_ic.tsv.tmp" "mpa_ic.tsv"'
                     sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file mpa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o $HP_VS_MP_PREFIX_$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
+                    sh '. venv/bin/activate && SHORTHIST=$(history | tail -4 | head -3 | cut -c 8-)'                    
+                    sh '. echo "name: $HP_VS_MP_PREFIX_$BUILDSTARTDATE" > $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh '. echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh '. echo "commands: >> $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
                 }
             }
         }
@@ -160,7 +175,7 @@ pipeline {
 					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
                                                               
                                 // upload to remote
-				                sh 'tar -czvf $HP_VS_MP_PREFIX.tsv.tar.gz $HP_VS_MP_PREFIX_$BUILDSTARTDATE.tsv mpa_ic.tsv'
+				                sh 'tar -czvf $HP_VS_MP_PREFIX.tsv.tar.gz $HP_VS_MP_PREFIX_$BUILDSTARTDATE.tsv $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml mpa_ic.tsv'
                                 sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_MP_PREFIX.tsv.tar.gz $S3PROJECTDIR'
 
                             }
@@ -176,6 +191,11 @@ pipeline {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:zp descendants -p i ZP:0000000 > ZP_terms.txt'
                     sh '. venv/bin/activate && runoak -g zpa.tsv -G g2t -i sqlite:obo:phenio information-content -p i --use-associations .all > zpa_ic.tsv && tail -n +2 "zpa_ic.tsv" > "zpa_ic.tsv.tmp" && mv "zpa_ic.tsv.tmp" "zpa_ic.tsv"'
                     sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file zpa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file ZP_terms.txt -O csv -o $HP_VS_ZP_PREFIX_$BUILDSTARTDATE.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
+                    sh '. venv/bin/activate && SHORTHIST=$(history | tail -4 | head -3 | cut -c 8-)'                    
+                    sh '. echo "name: $HP_VS_ZP_PREFIX_$BUILDSTARTDATE" > $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh '. echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh '. echo "commands: >> $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
                 }
             }
         }
@@ -191,7 +211,7 @@ pipeline {
 					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
                                                               
                                 // upload to remote
-				                sh 'tar -czvf $HP_VS_ZP_PREFIX.tsv.tar.gz $HP_VS_ZP_PREFIX_$BUILDSTARTDATE.tsv zpa_ic.tsv'
+				                sh 'tar -czvf $HP_VS_ZP_PREFIX.tsv.tar.gz $HP_VS_ZP_PREFIX_$BUILDSTARTDATE.tsv $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml zpa_ic.tsv'
                                 sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_ZP_PREFIX.tsv.tar.gz $S3PROJECTDIR'
                             }
 
