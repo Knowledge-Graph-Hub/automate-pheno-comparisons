@@ -13,7 +13,7 @@ pipeline {
         // Store similarity results at s3://kg-hub-public-data/monarch/semsim/
         S3PROJECTDIR = 's3://kg-hub-public-data/monarch/semsim/'
 
-	    RESNIK_THRESHOLD = '4.0' // value for min-ancestor-information-content parameter
+	    RESNIK_THRESHOLD = '1.5' // value for min-ancestor-information-content parameter
 
         HP_VS_HP_PREFIX = "HP_vs_HP_semsimian_"
         HP_VS_MP_PREFIX = "HP_vs_MP_semsimian_"
