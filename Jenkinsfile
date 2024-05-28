@@ -94,7 +94,7 @@ pipeline {
                     sh '. venv/bin/activate && SHORTHIST=$(history | tail -6 | head -5 | cut -c 8-)'                    
                     sh 'echo "name: $HP_VS_HP_PREFIX_$BUILDSTARTDATE" > $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
                     sh 'echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
-                    sh 'echo "commands: >> $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "commands: " >> $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
                     sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
                 }
             }
@@ -129,7 +129,7 @@ pipeline {
                     sh '. venv/bin/activate && SHORTHIST=$(history | tail -6 | head -5 | cut -c 8-)'                    
                     sh 'echo "name: $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE" > $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
                     sh 'echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
-                    sh 'echo "commands: >> $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "commands: " >> $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
                     sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> $HP_VS_HP_PREFIX_ONTOONLY_$BUILDSTARTDATE_log.yaml'
                 }
             }
@@ -166,7 +166,7 @@ pipeline {
                     sh '. venv/bin/activate && SHORTHIST=$(history | tail -7 | head -6 | cut -c 8-)'                    
                     sh 'echo "name: $HP_VS_MP_PREFIX_$BUILDSTARTDATE" > $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
                     sh 'echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
-                    sh 'echo "commands: >> $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "commands: " >> $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
                     sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> $HP_VS_MP_PREFIX_$BUILDSTARTDATE_log.yaml'
                 }
             }
@@ -204,7 +204,7 @@ pipeline {
                     sh '. venv/bin/activate && SHORTHIST=$(history | tail -7 | head -6 | cut -c 8-)'                    
                     sh 'echo "name: $HP_VS_ZP_PREFIX_$BUILDSTARTDATE" > $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
                     sh 'echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
-                    sh 'echo "commands: >> $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
+                    sh 'echo "commands: " >> $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
                     sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> $HP_VS_ZP_PREFIX_$BUILDSTARTDATE_log.yaml'
                 }
             }
