@@ -151,8 +151,8 @@ pipeline {
 					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
                                                               
                                 // upload to remote
-				                sh 'tar -czvf HP_VS_HP_PREFIX_ONTOONLY.tsv.tar.gz ${HP_VS_HP_ONTOONLY_NAME}.tsv ${HP_VS_HP_ONTOONLY_NAME}_log.yaml hpoa_ic.tsv'
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_HP_PREFIX_ONTOONLY.tsv.tar.gz $S3PROJECTDIR'
+				                sh 'tar -czvf ${HP_VS_HP_PREFIX_ONTOONLY}.tsv.tar.gz ${HP_VS_HP_ONTOONLY_NAME}.tsv ${HP_VS_HP_ONTOONLY_NAME}_log.yaml hpoa_ic.tsv'
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate ${HP_VS_HP_PREFIX_ONTOONLY}.tsv.tar.gz $S3PROJECTDIR'
                             }
 
                         }
