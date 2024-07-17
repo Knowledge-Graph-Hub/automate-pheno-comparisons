@@ -76,13 +76,15 @@ pipeline {
                     sh 'chmod +x duckdb'
                     // Get metadata for all ontologies, including PHENIO
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp ontology-metadata --all | yq \'.["owl:versionIRI"][0]\' > hp_version'
-                    HP_VERSION = readFile('commandResult').trim()
                     sh '. venv/bin/activate && runoak -i sqlite:obo:mp ontology-metadata --all | yq \'.["owl:versionIRI"][0]\' > mp_version'
-                    MP_VERSION = readFile('commandResult').trim()
                     sh '. venv/bin/activate && runoak -i sqlite:obo:zp ontology-metadata --all | yq \'.["owl:versionIRI"][0]\' > zp_version'
-                    ZP_VERSION = readFile('commandResult').trim()
                     sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all | yq \'.["owl:versionIRI"][0]\' > phenio_version'
-                    PHENIO_VERSION = readFile('commandResult').trim()
+                    script {
+                        HP_VERSION = readFile('hp_version').trim()
+                        MP_VERSION = readFile('mp_version').trim()
+                        ZP_VERSION = readFile('zp_version').trim()
+                        PHENIO_VERSION = readFile('phenio_version').trim()
+                    }
                     // Retrieve association tables
                     sh 'curl -L -s http://purl.obolibrary.org/obo/hp/hpoa/phenotype.hpoa > hpoa.tsv'
                     sh 'curl -L -s https://data.monarchinitiative.org/latest/tsv/gene_associations/gene_phenotype.10090.tsv.gz | gunzip - > mpa.tsv'
