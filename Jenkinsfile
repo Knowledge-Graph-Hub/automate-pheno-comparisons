@@ -77,10 +77,10 @@ pipeline {
                     // Install yq
                     sh 'wget https://github.com/mikefarah/yq/releases/download/v4.2.0/yq_linux_amd64 -O yq && chmod +x yq'
                     // Get metadata for all ontologies, including PHENIO
-                    sh '. venv/bin/activate && runoak -i sqlite:obo:hp ontology-metadata --all | ./yq \'.["owl:versionIRI"][0]\' > hp_version'
-                    sh '. venv/bin/activate && runoak -i sqlite:obo:mp ontology-metadata --all | ./yq \'.["owl:versionIRI"][0]\' > mp_version'
-                    sh '. venv/bin/activate && runoak -i sqlite:obo:zp ontology-metadata --all | ./yq \'.["owl:versionIRI"][0]\' > zp_version'
-                    sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all | ./yq \'.["owl:versionIRI"][0]\' > phenio_version'
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:hp ontology-metadata --all | ./yq \'.[\'owl:versionIRI\'][0]\' > hp_version'
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:mp ontology-metadata --all | ./yq \'.[\'owl:versionIRI\'][0]\' > mp_version'
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:zp ontology-metadata --all | ./yq \'.[\'owl:versionIRI\'][0]\' > zp_version'
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all | ./yq \'.[\'owl:versionIRI\'][0]\' > phenio_version'
                     script {
                         HP_VERSION = readFile('hp_version').trim()
                         MP_VERSION = readFile('mp_version').trim()
