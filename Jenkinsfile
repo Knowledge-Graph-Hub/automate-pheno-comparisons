@@ -74,8 +74,15 @@ pipeline {
                     sh 'wget https://github.com/duckdb/duckdb/releases/download/v0.10.3/duckdb_cli-linux-amd64.zip'
                     sh '. venv/bin/activate && python -m zipfile -e duckdb_cli-linux-amd64.zip ./'
                     sh 'chmod +x duckdb'
-                    // Get metadata for PHENIO
-                    sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all'
+                    // Get metadata for all ontologies, including PHENIO
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:hp ontology-metadata --all | yq '.["owl:versionIRI"][0]' > hp_version'
+                    HP_VERSION = readFile('commandResult').trim()
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:mp ontology-metadata --all | yq '.["owl:versionIRI"][0]' > mp_version'
+                    MP_VERSION = readFile('commandResult').trim()
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:zp ontology-metadata --all | yq '.["owl:versionIRI"][0]' > zp_version'
+                    ZP_VERSION = readFile('commandResult').trim()
+                    sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all | yq '.["owl:versionIRI"][0]' > phenio_version'
+                    PHENIO_VERSION = readFile('commandResult').trim()
                     // Retrieve association tables
                     sh 'curl -L -s http://purl.obolibrary.org/obo/hp/hpoa/phenotype.hpoa > hpoa.tsv'
                     sh 'curl -L -s https://data.monarchinitiative.org/latest/tsv/gene_associations/gene_phenotype.10090.tsv.gz | gunzip - > mpa.tsv'
@@ -97,7 +104,9 @@ pipeline {
                     // sh '. venv/bin/activate && SHORTHIST=$(history | tail -6 | head -5 | cut -c 8-)'                    
                     sh 'echo "name: ${HP_VS_HP_NAME}" > ${HP_VS_HP_NAME}_log.yaml'
                     sh 'echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> ${HP_VS_HP_NAME}_log.yaml'
-                    sh 'echo "commands: " >> ${HP_VS_HP_NAME}_log.yaml'
+                    sh 'echo "versions:" >> ${HP_VS_HP_NAME}_log.yaml'
+                    sh 'echo "  hp: ${HP_VERSION}" >> ${HP_VS_HP_NAME}_log.yaml'
+                    sh 'echo "  phenio: ${PHENIO_VERSION}" >> ${HP_VS_HP_NAME}_log.yaml'
                     // sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> $HP_VS_HP_PREFIX_$BUILDSTARTDATE_log.yaml'
                 }
             }
@@ -134,7 +143,10 @@ pipeline {
                     // sh '. venv/bin/activate && SHORTHIST=$(history | tail -7 | head -6 | cut -c 8-)'                    
                     sh 'echo "name: ${HP_VS_MP_NAME}" > ${HP_VS_MP_NAME}_log.yaml'
                     sh 'echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> ${HP_VS_MP_NAME}_log.yaml'
-                    sh 'echo "commands: " >> ${HP_VS_MP_NAME}_log.yaml'
+                    sh 'echo "versions: " >> ${HP_VS_MP_NAME}_log.yaml'
+                    sh 'echo "  hp: ${HP_VERSION}" >> ${HP_VS_HP_NAME}_log.yaml'
+                    sh 'echo "  mp: ${MP_VERSION}" >> ${HP_VS_HP_NAME}_log.yaml'
+                    sh 'echo "  phenio: ${PHENIO_VERSION}" >> ${HP_VS_HP_NAME}_log.yaml'
                     // sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> ${HP_VS_MP_NAME}_log.yaml'
                 }
             }
@@ -172,7 +184,10 @@ pipeline {
                     // sh '. venv/bin/activate && SHORTHIST=$(history | tail -7 | head -6 | cut -c 8-)'                    
                     sh 'echo "name: ${HP_VS_ZP_NAME}" > ${HP_VS_ZP_NAME}_log.yaml'
                     sh 'echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> ${HP_VS_ZP_NAME}_log.yaml'
-                    sh 'echo "commands: " >> ${HP_VS_ZP_NAME}_log.yaml'
+                    sh 'echo "versions: " >> ${HP_VS_ZP_NAME}_log.yaml'
+                    sh 'echo "  hp: ${HP_VERSION}" >> ${HP_VS_HP_NAME}_log.yaml'
+                    sh 'echo "  mp: ${ZP_VERSION}" >> ${HP_VS_HP_NAME}_log.yaml'
+                    sh 'echo "  phenio: ${PHENIO_VERSION}" >> ${HP_VS_HP_NAME}_log.yaml'
                     // sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> ${HP_VS_ZP_NAME}_log.yaml'
                 }
             }
