@@ -74,6 +74,8 @@ pipeline {
                     sh 'wget https://github.com/duckdb/duckdb/releases/download/v0.10.3/duckdb_cli-linux-amd64.zip'
                     sh '. venv/bin/activate && python -m zipfile -e duckdb_cli-linux-amd64.zip ./'
                     sh 'chmod +x duckdb'
+                    // Install yq
+                    sh 'wget https://github.com/mikefarah/yq/releases/download/v4.2.0/yq_linux_amd64 -O yq && chmod +x yq'
                     // Get metadata for all ontologies, including PHENIO
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp ontology-metadata --all | yq \'.["owl:versionIRI"][0]\' > hp_version'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:mp ontology-metadata --all | yq \'.["owl:versionIRI"][0]\' > mp_version'
