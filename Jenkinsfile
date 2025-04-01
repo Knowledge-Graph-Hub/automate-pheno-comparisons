@@ -26,6 +26,12 @@ pipeline {
         // Distribution ID for the AWS CloudFront for this bucket
         // used solely for invalidations
         AWS_CLOUDFRONT_DISTRIBUTION_ID = 'EUVSWXZQBXCFP'
+
+        // Variables for using alternate phenio
+        // The ALTERNATE_PHENIO_URL is the URL to the gzipped phenio semantic sql database
+        // It should resemble that at https://s3.amazonaws.com/bbop-sqlite/phenio.db.gz
+        USE_ALTERNATE_PHENIO = 'false' // set to true if you want to use the alternate phenio
+        ALTERNATE_PHENIO_URL = 'https://s3.amazonaws.com/bbop-sqlite/phenio.db.gz'
     }
     options {
         timestamps()
