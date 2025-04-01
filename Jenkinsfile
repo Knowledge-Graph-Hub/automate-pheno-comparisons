@@ -72,9 +72,10 @@ pipeline {
         stage('Setup') {
             steps {
                 dir('./working') {
-                	sh '/usr/bin/python3.9 -m venv venv'
-			        sh '. venv/bin/activate'
-			        sh './venv/bin/pip install s3cmd'
+                    
+                    sh '/usr/bin/python3.9 -m venv venv'
+                    sh '. venv/bin/activate'
+                    sh './venv/bin/pip install s3cmd'
                     sh './venv/bin/pip install "oaklib[semsimian] @ git+https://github.com/INCATools/ontology-access-kit.git"'
                     // Install duckdb
                     sh 'wget https://github.com/duckdb/duckdb/releases/download/v0.10.3/duckdb_cli-linux-amd64.zip'
@@ -82,6 +83,21 @@ pipeline {
                     sh 'chmod +x duckdb'
                     // Install yq
                     sh 'wget https://github.com/mikefarah/yq/releases/download/v4.2.0/yq_linux_amd64 -O yq && chmod +x yq'
+                    
+                    // Download alternate phenio if USE_ALTERNATE_PHENIO is true
+                    script {
+                        if (env.USE_ALTERNATE_PHENIO == 'true') {
+                            echo "Using alternate phenio database from ${ALTERNATE_PHENIO_URL}"
+                            sh "wget -O phenio.db.gz ${ALTERNATE_PHENIO_URL}"
+                            sh "gunzip phenio.db.gz"
+                            sh "mkdir -p ~/.cache/oaklib/phenio"
+                            sh "cp phenio.db ~/.cache/oaklib/phenio/"
+                            sh "echo 'Alternate phenio database installed successfully'"
+                        } else {
+                            echo "Using default phenio database"
+                        }
+                    }
+                    
                     // Get metadata for all ontologies, including PHENIO
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp ontology-metadata --all | ./yq eval \'.[\"owl:versionIRI\"][0]\' - > hp_version'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:mp ontology-metadata --all | ./yq eval \'.[\"owl:versionIRI\"][0]\' - > mp_version'
