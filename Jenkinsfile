@@ -103,7 +103,7 @@ pipeline {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp ontology-metadata --all | ./yq eval \'.[\"owl:versionIRI\"][0]\' - > hp_version'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:mp ontology-metadata --all | ./yq eval \'.[\"owl:versionIRI\"][0]\' - > mp_version'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:zp ontology-metadata --all | ./yq eval \'.[\"owl:versionIRI\"][0]\' - > zp_version'
-                    sh '. venv/bin/activate && runoak -i ${PHENIO_ADAPTER} ontology-metadata --all | ./yq eval \'.[\"owl:versionIRI\"][0]\' - > phenio_version'
+                    sh '. venv/bin/activate && runoak -i ${PHENIO_ADAPTER} ontology-metadata --all | ./yq eval \'.[\"owl:versionInfo\"][0]\' - > phenio_version'
                     script {
                         HP_VERSION = readFile('hp_version').trim()
                         MP_VERSION = readFile('mp_version').trim()
