@@ -110,6 +110,21 @@ pipeline {
                         ZP_VERSION = readFile('zp_version').trim()
                         PHENIO_VERSION = readFile('phenio_version').trim()
                     }
+
+                    // Print the versions
+                    sh 'echo "HP version: $HP_VERSION"'
+                    sh 'echo "MP version: $MP_VERSION"'
+                    sh 'echo "ZP version: $ZP_VERSION"'
+                    sh 'echo "PHENIO version: $PHENIO_VERSION"'
+
+                    // Update the S3PROJECTDIR to include the version if we're using alternate phenio
+                    script {
+                        if (env.USE_ALTERNATE_PHENIO == 'true') {
+                            S3PROJECTDIR = "${S3PROJECTDIR}${PHENIO_VERSION}/"
+                            echo "Updated S3PROJECTDIR to: $S3PROJECTDIR"
+                        }
+                    }
+
                     // Retrieve association tables
                     sh 'curl -L -s http://purl.obolibrary.org/obo/hp/hpoa/phenotype.hpoa > hpoa.tsv'
                     sh 'curl -L -s https://data.monarchinitiative.org/latest/tsv/gene_associations/gene_phenotype.10090.tsv.gz | gunzip - > mpa.tsv'
@@ -148,20 +163,10 @@ pipeline {
                                 file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
                                 string(credentialsId: 'aws_kg_hub_access_key', variable: 'AWS_ACCESS_KEY_ID'),
                                 string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                                                              
-                                // upload to remote - now with proper .tar.gz extension
+
+                                // upload to remote
                                 sh 'tar -czvf $HP_VS_HP_PREFIX.tar.gz ${HP_VS_HP_NAME}.tsv ${HP_VS_HP_NAME}_log.yaml hpoa_ic.tsv'
-                                
-                                // If using alternate PHENIO, upload to a subdirectory based on PHENIO version
-                                script {
-                                    if (env.USE_ALTERNATE_PHENIO == 'true') {
-                                        def targetDir = "${S3PROJECTDIR}${PHENIO_VERSION}/"
-                                        sh ". venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_HP_PREFIX.tar.gz $targetDir"
-                                        echo "Files uploaded to versioned directory: $targetDir"
-                                    } else {
-                                        sh ". venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_HP_PREFIX.tar.gz $S3PROJECTDIR"
-                                    }
-                                }
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_HP_PREFIX.tar.gz $S3PROJECTDIR'
                             }
                         }
                     }
@@ -197,20 +202,10 @@ pipeline {
                                 file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
                                 string(credentialsId: 'aws_kg_hub_access_key', variable: 'AWS_ACCESS_KEY_ID'),
                                 string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                                                              
-                                // upload to remote - now with proper .tar.gz extension
+
+                                // upload to remote
                                 sh 'tar -czvf $HP_VS_MP_PREFIX.tar.gz ${HP_VS_MP_NAME}.tsv ${HP_VS_MP_NAME}_log.yaml mpa_ic.tsv'
-                                
-                                // If using alternate PHENIO, upload to a subdirectory based on PHENIO version
-                                script {
-                                    if (env.USE_ALTERNATE_PHENIO == 'true') {
-                                        def targetDir = "${S3PROJECTDIR}${PHENIO_VERSION}/"
-                                        sh ". venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_MP_PREFIX.tar.gz $targetDir"
-                                        echo "Files uploaded to versioned directory: $targetDir"
-                                    } else {
-                                        sh ". venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_MP_PREFIX.tar.gz $S3PROJECTDIR"
-                                    }
-                                }
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_MP_PREFIX.tar.gz $S3PROJECTDIR'
                             }
                         }
                     }
@@ -246,20 +241,11 @@ pipeline {
                                 file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
                                 string(credentialsId: 'aws_kg_hub_access_key', variable: 'AWS_ACCESS_KEY_ID'),
                                 string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                                                              
+
                                 // upload to remote - now with proper .tar.gz extension
                                 sh 'tar -czvf $HP_VS_ZP_PREFIX.tar.gz ${HP_VS_ZP_NAME}.tsv ${HP_VS_ZP_NAME}_log.yaml zpa_ic.tsv'
-                                
-                                // If using alternate PHENIO, upload to a subdirectory based on PHENIO version
-                                script {
-                                    if (env.USE_ALTERNATE_PHENIO == 'true') {
-                                        def targetDir = "${S3PROJECTDIR}${PHENIO_VERSION}/"
-                                        sh ". venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_ZP_PREFIX.tar.gz $targetDir"
-                                        echo "Files uploaded to versioned directory: $targetDir"
-                                    } else {
-                                        sh ". venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_ZP_PREFIX.tar.gz $S3PROJECTDIR"
-                                    }
-                                }
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_ZP_PREFIX.tar.gz $S3PROJECTDIR'
+
                             }
                         }
                     }
