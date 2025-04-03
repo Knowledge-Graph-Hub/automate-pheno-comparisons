@@ -31,7 +31,7 @@ pipeline {
         // The ALTERNATE_PHENIO_URL is the URL to the gzipped phenio semantic sql database
         // It should resemble that at https://s3.amazonaws.com/bbop-sqlite/phenio.db.gz
         USE_ALTERNATE_PHENIO = 'true' // set to true if you want to use the alternate phenio
-        ALTERNATE_PHENIO_URL = 'http://kghub.io/frozen_incoming_data/phenio-test.db.gz'
+        ALTERNATE_PHENIO_URL = 'http://kghub.io/frozen_incoming_data/phenio-upheno.db.gz'
         PHENIO_ADAPTER = "${USE_ALTERNATE_PHENIO == 'true' ? 'sqlite:phenio_temp/phenio.db' : 'sqlite:obo:phenio'}" // set adapter based on whether we're using alternate phenio
     }
     options {
