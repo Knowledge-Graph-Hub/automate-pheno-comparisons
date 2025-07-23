@@ -89,8 +89,8 @@ pipeline {
                     }
                     // Retrieve association tables
                     sh 'curl -L -s http://purl.obolibrary.org/obo/hp/hpoa/phenotype.hpoa > hpoa.tsv'
-                    sh 'curl -L -s https://data.monarchinitiative.org/latest/tsv/gene_associations/gene_phenotype.10090.tsv.gz | gunzip - > mpa.tsv'
-                    sh 'curl -L -s https://data.monarchinitiative.org/latest/tsv/gene_associations/gene_phenotype.7955.tsv.gz | gunzip - > zpa.tsv'
+                    sh 'curl -L -s https://data.monarchinitiative.org/dipper-kg/final/tsv/gene_associations/gene_phenotype.10090.tsv.gz | gunzip - > mpa.tsv'
+                    sh 'curl -L -s https://data.monarchinitiative.org/dipper-kg/final/tsv/gene_associations/gene_phenotype.7955.tsv.gz | gunzip - > zpa.tsv'
                     // MP and ZP need to be preprocessed to pairwise associations
                     sh 'cut -f1,5 mpa.tsv | grep "MP" > "mpa.tsv.tmp" && mv "mpa.tsv.tmp" "mpa.tsv"'
                     sh 'cut -f1,5 zpa.tsv | grep "ZP" > "zpa.tsv.tmp" && mv "zpa.tsv.tmp" "zpa.tsv"'
