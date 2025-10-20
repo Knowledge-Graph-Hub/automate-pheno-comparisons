@@ -1,0 +1,9 @@
+# Python dependencies for phenotype comparison pipeline
+# Install with: pip install -r requirements.txt
+
+# S3 upload tool (optional, only needed if uploading to S3)
+s3cmd
+
+# Ontology Access Kit with semsimian support
+# This includes semantic similarity analysis capabilities
+oaklib[semsimian] @ git+https://github.com/INCATools/ontology-access-kit.git
