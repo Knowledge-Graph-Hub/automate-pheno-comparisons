@@ -16,9 +16,6 @@ Examples:
     # Run only HP vs HP comparison
     python run_pipeline.py --comparison hp-hp
 
-    # Skip S3 upload
-    python run_pipeline.py --no-upload
-
     # Use custom working directory
     python run_pipeline.py --working-dir /path/to/workdir
 """
@@ -45,15 +42,11 @@ logger = logging.getLogger(__name__)
 class PipelineConfig:
     """Configuration for the phenotype comparison pipeline."""
 
-    def __init__(self, working_dir: Path, upload: bool = False):
+    def __init__(self, working_dir: Path):
         self.working_dir = Path(working_dir)
-        self.upload = upload
 
         # Date-based naming
         self.build_date = datetime.now().strftime('%Y%m%d')
-
-        # S3 configuration
-        self.s3_project_dir = 's3://kg-hub-public-data/monarch/semsim/'
 
         # Pipeline parameters
         self.resnik_threshold = '1.5'
@@ -135,7 +128,6 @@ class PipelineRunner:
         # Install required packages
         logger.info("Installing Python packages...")
         packages = [
-            's3cmd',
             'oaklib[semsimian] @ git+https://github.com/INCATools/ontology-access-kit.git'
         ]
         for package in packages:
@@ -287,7 +279,7 @@ class PipelineRunner:
         self.run_command(f'{self.config.duckdb_path} -c "{duckdb_sql}"')
         self.run_command(f'mv "{output_file}.tmp" "{output_file}"')
 
-    def create_log_file(self, name: str, versions: Dict[str, str], output_file: str):
+    def create_log_file(self, name: str, versions: Dict[str, Optional[str]], output_file: str):
         """Create YAML log file with metadata."""
         logger.info(f"Creating log file: {output_file}...")
 
@@ -298,7 +290,8 @@ class PipelineRunner:
         ]
 
         for key, value in versions.items():
-            log_content.append(f"  {key}: {value}")
+            if value:
+                log_content.append(f"  {key}: {value}")
 
         log_path = self.config.working_dir / output_file
         log_path.write_text('\n'.join(log_content) + '\n')
@@ -318,27 +311,6 @@ class PipelineRunner:
                     logger.warning(f"  File not found: {file}")
 
         logger.info(f"Tarball created: {output_name}")
-
-    def upload_to_s3(self, tarball_name: str):
-        """Upload tarball to S3 (requires s3cmd configuration)."""
-        if not self.config.upload:
-            logger.info("S3 upload skipped (--no-upload flag set)")
-            return
-
-        logger.info(f"Uploading {tarball_name} to S3...")
-
-        cmd = (
-            f"{self.config.venv_activate} && "
-            f"s3cmd put -pr --acl-public {tarball_name} {self.config.s3_project_dir}"
-        )
-
-        try:
-            self.run_command(cmd)
-            logger.info(f"Successfully uploaded {tarball_name}")
-        except subprocess.CalledProcessError:
-            logger.error(
-                f"Failed to upload {tarball_name}. Make sure s3cmd is configured.")
-            logger.info("To configure s3cmd, run: s3cmd --configure")
 
     def run_hp_vs_hp(self):
         """Run HP vs HP similarity comparison."""
@@ -377,9 +349,6 @@ class PipelineRunner:
             "hpoa_ic.tsv"
         ]
         self.create_tarball(tarball_name, files)
-
-        # Upload to S3
-        self.upload_to_s3(tarball_name)
 
         logger.info("HP vs HP analysis complete!")
 
@@ -425,9 +394,6 @@ class PipelineRunner:
         ]
         self.create_tarball(tarball_name, files)
 
-        # Upload to S3
-        self.upload_to_s3(tarball_name)
-
         logger.info("HP vs MP analysis complete!")
 
     def run_hp_vs_zp(self):
@@ -471,9 +437,6 @@ class PipelineRunner:
             "zpa_ic.tsv"
         ]
         self.create_tarball(tarball_name, files)
-
-        # Upload to S3
-        self.upload_to_s3(tarball_name)
 
         logger.info("HP vs ZP analysis complete!")
 
@@ -537,12 +500,6 @@ def main():
     )
 
     parser.add_argument(
-        '--no-upload',
-        action='store_true',
-        help='Skip S3 upload step'
-    )
-
-    parser.add_argument(
         '--resnik-threshold',
         type=str,
         default='1.5',
@@ -569,8 +526,7 @@ def main():
 
     # Create configuration
     config = PipelineConfig(
-        working_dir=Path(args.working_dir),
-        upload=not args.no_upload
+        working_dir=Path(args.working_dir)
     )
     config.resnik_threshold = args.resnik_threshold
 
