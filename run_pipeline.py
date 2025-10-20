@@ -16,6 +16,9 @@ Examples:
     # Run only HP vs HP comparison
     python run_pipeline.py --comparison hp-hp
 
+    # Use custom PHENIO database
+    python run_pipeline.py --custom-phenio /path/to/phenio.db
+
     # Test mode: download files but skip comparisons
     python run_pipeline.py --test-mode
 
@@ -49,8 +52,9 @@ logger = logging.getLogger(__name__)
 class PipelineConfig:
     """Configuration for the phenotype comparison pipeline."""
 
-    def __init__(self, working_dir: Path):
+    def __init__(self, working_dir: Path, custom_phenio: Optional[Path] = None):
         self.working_dir = Path(working_dir)
+        self.custom_phenio = Path(custom_phenio) if custom_phenio else None
 
         # Date-based naming
         self.build_date = datetime.now().strftime('%Y%m%d')
@@ -83,6 +87,34 @@ class PipelineConfig:
         # Tools
         self.duckdb_path = self.working_dir / 'duckdb'
         self.yq_path = self.working_dir / 'yq'
+
+    def get_phenio_identifier(self) -> str:
+        """
+        Get the oaklib identifier for PHENIO.
+
+        Returns:
+            String identifier for use with runoak -i flag
+        """
+        if self.custom_phenio:
+            # Use custom PHENIO database file
+            return f"sqlite:{self.custom_phenio}"
+        else:
+            # Use default OBO PHENIO
+            return "sqlite:obo:phenio"
+
+    def get_semsimian_phenio_identifier(self) -> str:
+        """
+        Get the semsimian oaklib identifier for PHENIO.
+
+        Returns:
+            String identifier for use with runoak -i flag in similarity analysis
+        """
+        if self.custom_phenio:
+            # Use custom PHENIO database file with semsimian
+            return f"semsimian:sqlite:{self.custom_phenio}"
+        else:
+            # Use default OBO PHENIO with semsimian
+            return "semsimian:sqlite:obo:phenio"
 
 
 class PipelineRunner:
@@ -239,10 +271,17 @@ class PipelineRunner:
 
         for key, ont_id in ontologies.items():
             logger.info(f"Getting version for {ont_id}...")
-            ont_lower = ont_id.lower()
+
+            # Use custom PHENIO identifier if provided
+            if key == 'phenio':
+                ont_identifier = self.config.get_phenio_identifier()
+            else:
+                ont_lower = ont_id.lower()
+                ont_identifier = f"sqlite:obo:{ont_lower}"
+
             cmd = (
                 f"{self.config.venv_activate} && "
-                f"runoak -i sqlite:obo:{ont_lower} ontology-metadata --all | "
+                f"runoak -i {ont_identifier} ontology-metadata --all | "
                 f"{self.config.yq_path} eval '.[\"owl:versionIRI\"][0]' - > {key}_version"
             )
             self.run_command(cmd)
@@ -300,9 +339,15 @@ class PipelineRunner:
         logger.info(
             f"Calculating information content from {association_file}...")
 
+        # Use custom PHENIO if provided, otherwise use default ontology identifier
+        if ontology == 'phenio':
+            ontology_identifier = self.config.get_phenio_identifier()
+        else:
+            ontology_identifier = f"sqlite:obo:{ontology}"
+
         cmd = (
             f"{self.config.venv_activate} && "
-            f"runoak -g {association_file} -G {association_type} -i sqlite:obo:{ontology} "
+            f"runoak -g {association_file} -G {association_type} -i {ontology_identifier} "
             f"information-content -p i --use-associations .all > {output_file} && "
             f'tail -n +2 "{output_file}" > "{output_file}.tmp" && mv "{output_file}.tmp" "{output_file}"'
         )
@@ -312,9 +357,11 @@ class PipelineRunner:
         """Run semantic similarity analysis using semsimian."""
         logger.info(f"Running similarity analysis: {output_file}...")
 
+        phenio_identifier = self.config.get_semsimian_phenio_identifier()
+
         cmd = (
             f"{self.config.venv_activate} && "
-            f"runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel "
+            f"runoak -i {phenio_identifier} similarity --no-autolabel "
             f"--information-content-file {ic_file} -p i "
             f"--set1-file {set1_file} --set2-file {set2_file} "
             f"-O csv -o {output_file} "
@@ -552,6 +599,12 @@ def main():
     )
 
     parser.add_argument(
+        '--custom-phenio',
+        type=str,
+        help='Path to custom PHENIO Semantic SQL database file (e.g., phenio.db)'
+    )
+
+    parser.add_argument(
         '--skip-setup',
         action='store_true',
         help='Skip setup stage (use if already configured)'
@@ -576,10 +629,21 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     # Create configuration
+    custom_phenio_path = Path(
+        args.custom_phenio) if args.custom_phenio else None
     config = PipelineConfig(
-        working_dir=Path(args.working_dir)
+        working_dir=Path(args.working_dir),
+        custom_phenio=custom_phenio_path
     )
     config.resnik_threshold = args.resnik_threshold
+
+    # Log configuration
+    if config.custom_phenio:
+        logger.info(f"Using custom PHENIO database: {config.custom_phenio}")
+        if not config.custom_phenio.exists():
+            logger.error(
+                f"Custom PHENIO file not found: {config.custom_phenio}")
+            sys.exit(1)
 
     # Create pipeline runner
     runner = PipelineRunner(config)
@@ -601,10 +665,12 @@ def main():
         # Run requested comparisons (skip if in test mode)
         if args.test_mode:
             logger.info("=" * 80)
-            logger.info("TEST MODE: Setup complete, skipping similarity comparisons")
+            logger.info(
+                "TEST MODE: Setup complete, skipping similarity comparisons")
             logger.info("=" * 80)
             logger.info("Downloaded files are ready in the working directory.")
-            logger.info("To run comparisons, execute without --test-mode flag.")
+            logger.info(
+                "To run comparisons, execute without --test-mode flag.")
         elif args.comparison == 'all':
             runner.run_hp_vs_hp()
             runner.run_hp_vs_mp()
