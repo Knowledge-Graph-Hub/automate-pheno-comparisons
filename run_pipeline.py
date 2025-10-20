@@ -16,6 +16,9 @@ Examples:
     # Run only HP vs HP comparison
     python run_pipeline.py --comparison hp-hp
 
+    # Test mode: download files but skip comparisons
+    python run_pipeline.py --test-mode
+
     # Use custom working directory
     python run_pipeline.py --working-dir /path/to/workdir
 """
@@ -555,6 +558,12 @@ def main():
     )
 
     parser.add_argument(
+        '--test-mode',
+        action='store_true',
+        help='Testing mode: download all files but skip similarity comparisons'
+    )
+
+    parser.add_argument(
         '--debug',
         action='store_true',
         help='Enable debug logging'
@@ -589,8 +598,14 @@ def main():
                     setattr(config, f"{ont}_version",
                             version_file.read_text().strip())
 
-        # Run requested comparisons
-        if args.comparison == 'all':
+        # Run requested comparisons (skip if in test mode)
+        if args.test_mode:
+            logger.info("=" * 80)
+            logger.info("TEST MODE: Setup complete, skipping similarity comparisons")
+            logger.info("=" * 80)
+            logger.info("Downloaded files are ready in the working directory.")
+            logger.info("To run comparisons, execute without --test-mode flag.")
+        elif args.comparison == 'all':
             runner.run_hp_vs_hp()
             runner.run_hp_vs_mp()
             runner.run_hp_vs_zp()
