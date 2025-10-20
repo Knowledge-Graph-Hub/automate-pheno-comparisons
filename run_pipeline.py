@@ -21,11 +21,15 @@ Examples:
 """
 
 import argparse
+import gzip
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import tarfile
+import urllib.request
+import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -104,6 +108,67 @@ class PipelineRunner:
             logger.error(f"Error output: {e.stderr}")
             raise
 
+    def download_file(self, url: str, output_path: Path, chunk_size: int = 8192) -> None:
+        """
+        Download a file from URL to output path using Python urllib.
+
+        Args:
+            url: URL to download from
+            output_path: Path where to save the file
+            chunk_size: Size of chunks to read at a time
+        """
+        logger.info(f"Downloading {url}...")
+        try:
+            with urllib.request.urlopen(url) as response:
+                with open(output_path, 'wb') as out_file:
+                    while True:
+                        chunk = response.read(chunk_size)
+                        if not chunk:
+                            break
+                        out_file.write(chunk)
+            logger.debug(f"Downloaded to {output_path}")
+        except Exception as e:
+            logger.error(f"Failed to download {url}: {e}")
+            raise
+
+    def download_and_extract_zip(self, url: str, extract_to: Path) -> None:
+        """
+        Download a zip file and extract it.
+
+        Args:
+            url: URL of the zip file
+            extract_to: Directory to extract files to
+        """
+        zip_path = extract_to / "temp_download.zip"
+        self.download_file(url, zip_path)
+
+        logger.info(f"Extracting {zip_path.name}...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_to)
+
+        # Clean up zip file
+        zip_path.unlink()
+        logger.debug("Extraction complete")
+
+    def download_and_decompress_gzip(self, url: str, output_path: Path) -> None:
+        """
+        Download a gzipped file and decompress it.
+
+        Args:
+            url: URL of the gzipped file
+            output_path: Path where to save the decompressed file
+        """
+        logger.info(f"Downloading and decompressing {url}...")
+        try:
+            with urllib.request.urlopen(url) as response:
+                with gzip.GzipFile(fileobj=response) as gzip_file:
+                    with open(output_path, 'wb') as out_file:
+                        shutil.copyfileobj(gzip_file, out_file)
+            logger.debug(f"Decompressed to {output_path}")
+        except Exception as e:
+            logger.error(f"Failed to download and decompress {url}: {e}")
+            raise
+
     def setup_working_directory(self):
         """Create and initialize the working directory."""
         logger.info(f"Setting up working directory: {self.config.working_dir}")
@@ -142,9 +207,7 @@ class PipelineRunner:
         if not self.config.duckdb_path.exists():
             logger.info("Downloading DuckDB...")
             duckdb_url = "https://github.com/duckdb/duckdb/releases/download/v0.10.3/duckdb_cli-linux-amd64.zip"
-            self.run_command(f"wget {duckdb_url}")
-            self.run_command(
-                f"{self.config.venv_python} -m zipfile -e duckdb_cli-linux-amd64.zip ./")
+            self.download_and_extract_zip(duckdb_url, self.config.working_dir)
             self.run_command(f"chmod +x {self.config.duckdb_path}")
             logger.info("DuckDB installed")
         else:
@@ -154,7 +217,7 @@ class PipelineRunner:
         if not self.config.yq_path.exists():
             logger.info("Downloading yq...")
             yq_url = "https://github.com/mikefarah/yq/releases/download/v4.2.0/yq_linux_amd64"
-            self.run_command(f"wget {yq_url} -O {self.config.yq_path}")
+            self.download_file(yq_url, self.config.yq_path)
             self.run_command(f"chmod +x {self.config.yq_path}")
             logger.info("yq installed")
         else:
@@ -197,17 +260,19 @@ class PipelineRunner:
         # Download HPOA (Human Phenotype Ontology Annotations)
         logger.info("Downloading HPOA...")
         hpoa_url = "http://purl.obolibrary.org/obo/hp/hpoa/phenotype.hpoa"
-        self.run_command(f"curl -L -s {hpoa_url} > hpoa.tsv")
+        self.download_file(hpoa_url, self.config.working_dir / 'hpoa.tsv')
 
         # Download MPA (Mouse Phenotype Annotations)
         logger.info("Downloading MPA...")
         mpa_url = "https://data.monarchinitiative.org/dipper-kg/final/tsv/gene_associations/gene_phenotype.10090.tsv.gz"
-        self.run_command(f"curl -L -s {mpa_url} | gunzip - > mpa.tsv")
+        self.download_and_decompress_gzip(
+            mpa_url, self.config.working_dir / 'mpa.tsv')
 
         # Download ZPA (Zebrafish Phenotype Annotations)
         logger.info("Downloading ZPA...")
         zpa_url = "https://data.monarchinitiative.org/dipper-kg/final/tsv/gene_associations/gene_phenotype.7955.tsv.gz"
-        self.run_command(f"curl -L -s {zpa_url} | gunzip - > zpa.tsv")
+        self.download_and_decompress_gzip(
+            zpa_url, self.config.working_dir / 'zpa.tsv')
 
         # Preprocess MP and ZP to pairwise associations
         logger.info("Preprocessing association tables...")
