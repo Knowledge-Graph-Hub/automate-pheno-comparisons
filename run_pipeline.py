@@ -312,133 +312,110 @@ class PipelineRunner:
 
         logger.info(f"Tarball created: {output_name}")
 
-    def run_hp_vs_hp(self):
-        """Run HP vs HP similarity comparison."""
+    def run_similarity_comparison(self, ont1: str, ont2: str,
+                                  ont1_root: str, ont2_root: str,
+                                  ont1_prefix: str, ont2_prefix: str,
+                                  association_file: str, association_type: str):
+        """
+        Run semantic similarity comparison between two ontologies.
+
+        Args:
+            ont1: First ontology code (e.g., 'hp')
+            ont2: Second ontology code (e.g., 'mp', 'zp', or 'hp' for self-comparison)
+            ont1_root: Root term for first ontology (e.g., 'HP:0000118')
+            ont2_root: Root term for second ontology (e.g., 'MP:0000001')
+            ont1_prefix: Prefix for first ontology files (e.g., 'HPO')
+            ont2_prefix: Prefix for second ontology files (e.g., 'MP')
+            association_file: Association file for information content (e.g., 'hpoa.tsv', 'mpa.tsv')
+            association_type: Association type for oaklib (e.g., 'hpoa', 'g2t')
+        """
+        # Determine output names from config
+        comparison_key = f"{ont1}_vs_{ont2}"
+        output_name = getattr(self.config, f"{comparison_key}_name")
+        output_prefix = getattr(self.config, f"{comparison_key}_prefix")
+
         logger.info("=" * 80)
-        logger.info("STAGE: HP vs HP Similarity Analysis")
+        logger.info(
+            f"STAGE: {ont1.upper()} vs {ont2.upper()} Similarity Analysis")
         logger.info("=" * 80)
 
-        # Get HPO terms
-        self.get_ontology_terms('hp', 'HP:0000118', 'HPO')
+        # Get terms for first ontology (skip if already done)
+        if not (self.config.working_dir / f"{ont1_prefix}_terms.txt").exists():
+            self.get_ontology_terms(ont1, ont1_root, ont1_prefix)
+
+        # Get terms for second ontology (if different from first)
+        if ont1 != ont2:
+            self.get_ontology_terms(ont2, ont2_root, ont2_prefix)
+            # Combine term files for labeling
+            self.run_command(
+                f'cat {ont1_prefix}_terms.tsv {ont2_prefix}_terms.tsv > {ont1_prefix}_{ont2_prefix}_terms.tsv')
+            labels_file = f'{ont1_prefix}_{ont2_prefix}_terms.tsv'
+        else:
+            labels_file = f'{ont1_prefix}_terms.tsv'
 
         # Calculate information content
-        self.calculate_information_content('hpoa.tsv', 'hpoa', 'hpoa_ic.tsv')
+        ic_output = f"{ont2.lower()}a_ic.tsv"
+        self.calculate_information_content(
+            association_file, association_type, ic_output)
 
-        # Run similarity
-        similarity_output = f"{self.config.hp_vs_hp_name}.tsv"
+        # Run similarity analysis
+        similarity_output = f"{output_name}.tsv"
         self.run_similarity_analysis(
-            'HPO_terms.txt', 'HPO_terms.txt', 'hpoa_ic.tsv', similarity_output)
+            f'{ont1_prefix}_terms.txt',
+            f'{ont2_prefix}_terms.txt',
+            ic_output,
+            similarity_output
+        )
 
         # Add labels
         self.add_labels_with_duckdb(
-            similarity_output, 'HPO_terms.tsv', similarity_output)
+            similarity_output, labels_file, similarity_output)
 
-        # Create log file
-        versions = {
-            'hp': self.config.hp_version,
-            'phenio': self.config.phenio_version
-        }
-        self.create_log_file(self.config.hp_vs_hp_name,
-                             versions, f"{self.config.hp_vs_hp_name}_log.yaml")
+        # Create log file with appropriate versions
+        versions = {'hp': self.config.hp_version,
+                    'phenio': self.config.phenio_version}
+        if ont2 != 'hp':
+            versions[ont2] = getattr(self.config, f"{ont2}_version")
+
+        self.create_log_file(output_name, versions, f"{output_name}_log.yaml")
 
         # Create tarball
-        tarball_name = f"{self.config.hp_vs_hp_prefix}.tar.gz"
+        tarball_name = f"{output_prefix}.tar.gz"
         files = [
-            f"{self.config.hp_vs_hp_name}.tsv",
-            f"{self.config.hp_vs_hp_name}_log.yaml",
-            "hpoa_ic.tsv"
+            f"{output_name}.tsv",
+            f"{output_name}_log.yaml",
+            ic_output
         ]
         self.create_tarball(tarball_name, files)
 
-        logger.info("HP vs HP analysis complete!")
+        logger.info(f"{ont1.upper()} vs {ont2.upper()} analysis complete!")
+
+    def run_hp_vs_hp(self):
+        """Run HP vs HP similarity comparison."""
+        self.run_similarity_comparison(
+            ont1='hp', ont2='hp',
+            ont1_root='HP:0000118', ont2_root='HP:0000118',
+            ont1_prefix='HPO', ont2_prefix='HPO',
+            association_file='hpoa.tsv', association_type='hpoa'
+        )
 
     def run_hp_vs_mp(self):
         """Run HP vs MP similarity comparison."""
-        logger.info("=" * 80)
-        logger.info("STAGE: HP vs MP Similarity Analysis")
-        logger.info("=" * 80)
-
-        # Get MP terms
-        self.get_ontology_terms('mp', 'MP:0000001', 'MP')
-
-        # Combine HPO and MP terms for labeling
-        self.run_command('cat HPO_terms.tsv MP_terms.tsv > HP_MP_terms.tsv')
-
-        # Calculate information content
-        self.calculate_information_content('mpa.tsv', 'g2t', 'mpa_ic.tsv')
-
-        # Run similarity
-        similarity_output = f"{self.config.hp_vs_mp_name}.tsv"
-        self.run_similarity_analysis(
-            'HPO_terms.txt', 'MP_terms.txt', 'mpa_ic.tsv', similarity_output)
-
-        # Add labels
-        self.add_labels_with_duckdb(
-            similarity_output, 'HP_MP_terms.tsv', similarity_output)
-
-        # Create log file
-        versions = {
-            'hp': self.config.hp_version,
-            'mp': self.config.mp_version,
-            'phenio': self.config.phenio_version
-        }
-        self.create_log_file(self.config.hp_vs_mp_name,
-                             versions, f"{self.config.hp_vs_mp_name}_log.yaml")
-
-        # Create tarball
-        tarball_name = f"{self.config.hp_vs_mp_prefix}.tar.gz"
-        files = [
-            f"{self.config.hp_vs_mp_name}.tsv",
-            f"{self.config.hp_vs_mp_name}_log.yaml",
-            "mpa_ic.tsv"
-        ]
-        self.create_tarball(tarball_name, files)
-
-        logger.info("HP vs MP analysis complete!")
+        self.run_similarity_comparison(
+            ont1='hp', ont2='mp',
+            ont1_root='HP:0000118', ont2_root='MP:0000001',
+            ont1_prefix='HPO', ont2_prefix='MP',
+            association_file='mpa.tsv', association_type='g2t'
+        )
 
     def run_hp_vs_zp(self):
         """Run HP vs ZP similarity comparison."""
-        logger.info("=" * 80)
-        logger.info("STAGE: HP vs ZP Similarity Analysis")
-        logger.info("=" * 80)
-
-        # Get ZP terms
-        self.get_ontology_terms('zp', 'ZP:0000000', 'ZP')
-
-        # Combine HPO and ZP terms for labeling
-        self.run_command('cat HPO_terms.tsv ZP_terms.tsv > HP_ZP_terms.tsv')
-
-        # Calculate information content
-        self.calculate_information_content('zpa.tsv', 'g2t', 'zpa_ic.tsv')
-
-        # Run similarity
-        similarity_output = f"{self.config.hp_vs_zp_name}.tsv"
-        self.run_similarity_analysis(
-            'HPO_terms.txt', 'ZP_terms.txt', 'zpa_ic.tsv', similarity_output)
-
-        # Add labels
-        self.add_labels_with_duckdb(
-            similarity_output, 'HP_ZP_terms.tsv', similarity_output)
-
-        # Create log file
-        versions = {
-            'hp': self.config.hp_version,
-            'zp': self.config.zp_version,
-            'phenio': self.config.phenio_version
-        }
-        self.create_log_file(self.config.hp_vs_zp_name,
-                             versions, f"{self.config.hp_vs_zp_name}_log.yaml")
-
-        # Create tarball
-        tarball_name = f"{self.config.hp_vs_zp_prefix}.tar.gz"
-        files = [
-            f"{self.config.hp_vs_zp_name}.tsv",
-            f"{self.config.hp_vs_zp_name}_log.yaml",
-            "zpa_ic.tsv"
-        ]
-        self.create_tarball(tarball_name, files)
-
-        logger.info("HP vs ZP analysis complete!")
+        self.run_similarity_comparison(
+            ont1='hp', ont2='zp',
+            ont1_root='HP:0000118', ont2_root='ZP:0000000',
+            ont1_prefix='HPO', ont2_prefix='ZP',
+            association_file='zpa.tsv', association_type='g2t'
+        )
 
     def setup(self):
         """Run all setup stages."""
