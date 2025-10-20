@@ -34,6 +34,8 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import threading
+import time
 import urllib.request
 import zipfile
 from datetime import datetime
@@ -47,6 +49,72 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+class ProgressTimer:
+    """A simple timer that prints elapsed time periodically for long-running operations."""
+    
+    def __init__(self, operation_name: str, update_interval: int = 30):
+        """
+        Initialize the progress timer.
+        
+        Args:
+            operation_name: Name of the operation being timed
+            update_interval: Seconds between progress updates (default: 30)
+        """
+        self.operation_name = operation_name
+        self.update_interval = update_interval
+        self.start_time = None
+        self.stop_flag = threading.Event()
+        self.thread = None
+    
+    def _format_elapsed(self, seconds: float) -> str:
+        """Format elapsed seconds into a readable string."""
+        if seconds < 60:
+            return f"{int(seconds)}s"
+        elif seconds < 3600:
+            mins = int(seconds / 60)
+            secs = int(seconds % 60)
+            return f"{mins}m {secs}s"
+        else:
+            hours = int(seconds / 3600)
+            mins = int((seconds % 3600) / 60)
+            return f"{hours}h {mins}m"
+    
+    def _print_progress(self):
+        """Print progress updates until stopped."""
+        while not self.stop_flag.wait(self.update_interval):
+            if self.start_time is not None:
+                elapsed = time.time() - self.start_time
+                logger.info(f"  [{self.operation_name}] Still running... (elapsed: {self._format_elapsed(elapsed)})")
+    
+    def start(self):
+        """Start the progress timer."""
+        self.start_time = time.time()
+        self.stop_flag.clear()
+        self.thread = threading.Thread(target=self._print_progress, daemon=True)
+        self.thread.start()
+        logger.info(f"Starting: {self.operation_name}")
+    
+    def stop(self):
+        """Stop the progress timer and log final elapsed time."""
+        if self.thread and self.thread.is_alive():
+            self.stop_flag.set()
+            self.thread.join(timeout=1)
+        
+        if self.start_time is not None:
+            elapsed = time.time() - self.start_time
+            logger.info(f"Completed: {self.operation_name} (took {self._format_elapsed(elapsed)})")
+    
+    def __enter__(self):
+        """Context manager entry."""
+        self.start()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.stop()
+        return False
 
 
 class PipelineConfig:
@@ -325,20 +393,17 @@ class PipelineRunner:
 
     def get_ontology_terms(self, ontology: str, root_term: str, output_prefix: str):
         """Get descendant terms for an ontology."""
-        logger.info(f"Getting {ontology} terms...")
-
         cmd = (
             f"{self.config.venv_activate} && "
             f"runoak -i sqlite:obo:{ontology.lower()} descendants -p i {root_term} > {output_prefix}_terms.txt && "
             f'sed "s/ [!] /\\t/g" {output_prefix}_terms.txt > {output_prefix}_terms.tsv'
         )
-        self.run_command(cmd)
+        
+        with ProgressTimer(f"Extracting {ontology} terms from {root_term}"):
+            self.run_command(cmd)
 
     def calculate_information_content(self, association_file: str, association_type: str, output_file: str, ontology: str = 'phenio'):
         """Calculate information content using associations."""
-        logger.info(
-            f"Calculating information content from {association_file}...")
-
         # Use custom PHENIO if provided, otherwise use default ontology identifier
         if ontology == 'phenio':
             ontology_identifier = self.config.get_phenio_identifier()
@@ -351,12 +416,12 @@ class PipelineRunner:
             f"information-content -p i --use-associations .all > {output_file} && "
             f'tail -n +2 "{output_file}" > "{output_file}.tmp" && mv "{output_file}.tmp" "{output_file}"'
         )
-        self.run_command(cmd)
+        
+        with ProgressTimer(f"Calculating information content from {association_file}"):
+            self.run_command(cmd)
 
     def run_similarity_analysis(self, set1_file: str, set2_file: str, ic_file: str, output_file: str):
         """Run semantic similarity analysis using semsimian."""
-        logger.info(f"Running similarity analysis: {output_file}...")
-
         phenio_identifier = self.config.get_semsimian_phenio_identifier()
 
         cmd = (
@@ -367,7 +432,9 @@ class PipelineRunner:
             f"-O csv -o {output_file} "
             f"--min-ancestor-information-content {self.config.resnik_threshold}"
         )
-        self.run_command(cmd)
+        
+        with ProgressTimer(f"Similarity analysis -> {output_file}"):
+            self.run_command(cmd)
 
     def add_labels_with_duckdb(self, similarity_file: str, labels_file: str, output_file: str):
         """Add human-readable labels to similarity results using DuckDB."""
