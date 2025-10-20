@@ -53,11 +53,11 @@ logger = logging.getLogger(__name__)
 
 class ProgressTimer:
     """A simple timer that prints elapsed time periodically for long-running operations."""
-    
+
     def __init__(self, operation_name: str, update_interval: int = 30):
         """
         Initialize the progress timer.
-        
+
         Args:
             operation_name: Name of the operation being timed
             update_interval: Seconds between progress updates (default: 30)
@@ -67,7 +67,7 @@ class ProgressTimer:
         self.start_time = None
         self.stop_flag = threading.Event()
         self.thread = None
-    
+
     def _format_elapsed(self, seconds: float) -> str:
         """Format elapsed seconds into a readable string."""
         if seconds < 60:
@@ -80,37 +80,40 @@ class ProgressTimer:
             hours = int(seconds / 3600)
             mins = int((seconds % 3600) / 60)
             return f"{hours}h {mins}m"
-    
+
     def _print_progress(self):
         """Print progress updates until stopped."""
         while not self.stop_flag.wait(self.update_interval):
             if self.start_time is not None:
                 elapsed = time.time() - self.start_time
-                logger.info(f"  [{self.operation_name}] Still running... (elapsed: {self._format_elapsed(elapsed)})")
-    
+                logger.info(
+                    f"  [{self.operation_name}] Still running... (elapsed: {self._format_elapsed(elapsed)})")
+
     def start(self):
         """Start the progress timer."""
         self.start_time = time.time()
         self.stop_flag.clear()
-        self.thread = threading.Thread(target=self._print_progress, daemon=True)
+        self.thread = threading.Thread(
+            target=self._print_progress, daemon=True)
         self.thread.start()
         logger.info(f"Starting: {self.operation_name}")
-    
+
     def stop(self):
         """Stop the progress timer and log final elapsed time."""
         if self.thread and self.thread.is_alive():
             self.stop_flag.set()
             self.thread.join(timeout=1)
-        
+
         if self.start_time is not None:
             elapsed = time.time() - self.start_time
-            logger.info(f"Completed: {self.operation_name} (took {self._format_elapsed(elapsed)})")
-    
+            logger.info(
+                f"Completed: {self.operation_name} (took {self._format_elapsed(elapsed)})")
+
     def __enter__(self):
         """Context manager entry."""
         self.start()
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         self.stop()
@@ -123,7 +126,8 @@ class PipelineConfig:
     def __init__(self, working_dir: Path, custom_phenio: Optional[Path] = None):
         # Convert to absolute path immediately to avoid issues with os.chdir
         self.working_dir = Path(working_dir).absolute()
-        self.custom_phenio = Path(custom_phenio).absolute() if custom_phenio else None
+        self.custom_phenio = Path(
+            custom_phenio).absolute() if custom_phenio else None
 
         # Date-based naming
         self.build_date = datetime.now().strftime('%Y%m%d')
@@ -146,12 +150,6 @@ class PipelineConfig:
         self.mp_version: Optional[str] = None
         self.zp_version: Optional[str] = None
         self.phenio_version: Optional[str] = None
-
-        # Virtual environment
-        self.venv_dir = self.working_dir / 'venv'
-        self.venv_python = self.venv_dir / 'bin' / 'python'
-        self.venv_pip = self.venv_dir / 'bin' / 'pip'
-        self.venv_activate = f"source {self.venv_dir / 'bin' / 'activate'}"
 
         # Tools
         self.duckdb_path = self.working_dir / 'duckdb'
@@ -279,30 +277,6 @@ class PipelineRunner:
         self.config.working_dir.mkdir(parents=True, exist_ok=True)
         os.chdir(self.config.working_dir)
 
-    def setup_virtual_environment(self):
-        """Create Python virtual environment and install dependencies."""
-        logger.info("Setting up virtual environment...")
-
-        # Create venv if it doesn't exist
-        if not self.config.venv_dir.exists():
-            logger.info("Creating virtual environment...")
-            self.run_command(f"python3 -m venv {self.config.venv_dir}")
-        else:
-            logger.info("Virtual environment already exists")
-
-        # Upgrade pip
-        logger.info("Upgrading pip...")
-        self.run_command(f"{self.config.venv_pip} install --upgrade pip")
-
-        # Install required packages
-        logger.info("Installing Python packages...")
-        packages = [
-            'oaklib[semsimian] @ git+https://github.com/INCATools/ontology-access-kit.git'
-        ]
-        for package in packages:
-            logger.info(f"Installing {package}...")
-            self.run_command(f'{self.config.venv_pip} install "{package}"')
-
     def install_tools(self):
         """Download and install required command-line tools (duckdb, yq)."""
         logger.info("Installing required tools...")
@@ -349,7 +323,6 @@ class PipelineRunner:
                 ont_identifier = f"sqlite:obo:{ont_lower}"
 
             cmd = (
-                f"{self.config.venv_activate} && "
                 f"runoak -i {ont_identifier} ontology-metadata --all | "
                 f"{self.config.yq_path} eval '.[\"owl:versionIRI\"][0]' - > {key}_version"
             )
@@ -395,11 +368,10 @@ class PipelineRunner:
     def get_ontology_terms(self, ontology: str, root_term: str, output_prefix: str):
         """Get descendant terms for an ontology."""
         cmd = (
-            f"{self.config.venv_activate} && "
             f"runoak -i sqlite:obo:{ontology.lower()} descendants -p i {root_term} > {output_prefix}_terms.txt && "
             f'sed "s/ [!] /\\t/g" {output_prefix}_terms.txt > {output_prefix}_terms.tsv'
         )
-        
+
         with ProgressTimer(f"Extracting {ontology} terms from {root_term}"):
             self.run_command(cmd)
 
@@ -412,12 +384,11 @@ class PipelineRunner:
             ontology_identifier = f"sqlite:obo:{ontology}"
 
         cmd = (
-            f"{self.config.venv_activate} && "
             f"runoak -g {association_file} -G {association_type} -i {ontology_identifier} "
             f"information-content -p i --use-associations .all > {output_file} && "
             f'tail -n +2 "{output_file}" > "{output_file}.tmp" && mv "{output_file}.tmp" "{output_file}"'
         )
-        
+
         with ProgressTimer(f"Calculating information content from {association_file}"):
             self.run_command(cmd)
 
@@ -426,14 +397,13 @@ class PipelineRunner:
         phenio_identifier = self.config.get_semsimian_phenio_identifier()
 
         cmd = (
-            f"{self.config.venv_activate} && "
             f"runoak -i {phenio_identifier} similarity --no-autolabel "
             f"--information-content-file {ic_file} -p i "
             f"--set1-file {set1_file} --set2-file {set2_file} "
             f"-O csv -o {output_file} "
             f"--min-ancestor-information-content {self.config.resnik_threshold}"
         )
-        
+
         with ProgressTimer(f"Similarity analysis -> {output_file}"):
             self.run_command(cmd)
 
@@ -607,7 +577,6 @@ class PipelineRunner:
         logger.info("=" * 80)
 
         self.setup_working_directory()
-        self.setup_virtual_environment()
         self.install_tools()
         self.get_ontology_versions()
         self.download_association_tables()
