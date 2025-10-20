@@ -121,8 +121,9 @@ class PipelineConfig:
     """Configuration for the phenotype comparison pipeline."""
 
     def __init__(self, working_dir: Path, custom_phenio: Optional[Path] = None):
-        self.working_dir = Path(working_dir)
-        self.custom_phenio = Path(custom_phenio) if custom_phenio else None
+        # Convert to absolute path immediately to avoid issues with os.chdir
+        self.working_dir = Path(working_dir).absolute()
+        self.custom_phenio = Path(custom_phenio).absolute() if custom_phenio else None
 
         # Date-based naming
         self.build_date = datetime.now().strftime('%Y%m%d')
@@ -201,7 +202,7 @@ class PipelineRunner:
                 check=check,
                 capture_output=True,
                 text=True,
-                cwd=self.config.working_dir
+                cwd=str(self.config.working_dir)
             )
             if result.stdout:
                 logger.debug(f"Output: {result.stdout}")
