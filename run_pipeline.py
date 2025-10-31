@@ -30,6 +30,7 @@ import argparse
 import gzip
 import logging
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -281,10 +282,33 @@ class PipelineRunner:
         """Download and install required command-line tools (duckdb, yq)."""
         logger.info("Installing required tools...")
 
+        # Detect platform
+        system = platform.system().lower()
+        machine = platform.machine().lower()
+
+        # Map platform to DuckDB and yq naming conventions
+        if system == "darwin":
+            duckdb_platform = "osx-universal"
+            if machine == "arm64":
+                yq_platform = "darwin_arm64"
+            else:
+                yq_platform = "darwin_amd64"
+        elif system == "linux":
+            if machine in ["x86_64", "amd64"]:
+                duckdb_platform = "linux-amd64"
+                yq_platform = "linux_amd64"
+            elif machine in ["aarch64", "arm64"]:
+                duckdb_platform = "linux-aarch64"
+                yq_platform = "linux_arm64"
+            else:
+                raise RuntimeError(f"Unsupported architecture: {machine}")
+        else:
+            raise RuntimeError(f"Unsupported platform: {system}")
+
         # Install DuckDB
         if not self.config.duckdb_path.exists():
-            logger.info("Downloading DuckDB...")
-            duckdb_url = "https://github.com/duckdb/duckdb/releases/download/v0.10.3/duckdb_cli-linux-amd64.zip"
+            logger.info(f"Downloading DuckDB for {system} ({machine})...")
+            duckdb_url = f"https://github.com/duckdb/duckdb/releases/download/v0.10.3/duckdb_cli-{duckdb_platform}.zip"
             self.download_and_extract_zip(duckdb_url, self.config.working_dir)
             self.run_command(f"chmod +x {self.config.duckdb_path}")
             logger.info("DuckDB installed")
@@ -293,8 +317,8 @@ class PipelineRunner:
 
         # Install yq
         if not self.config.yq_path.exists():
-            logger.info("Downloading yq...")
-            yq_url = "https://github.com/mikefarah/yq/releases/download/v4.2.0/yq_linux_amd64"
+            logger.info(f"Downloading yq for {system} ({machine})...")
+            yq_url = f"https://github.com/mikefarah/yq/releases/download/v4.48.1/yq_{yq_platform}"
             self.download_file(yq_url, self.config.yq_path)
             self.run_command(f"chmod +x {self.config.yq_path}")
             logger.info("yq installed")
@@ -324,7 +348,7 @@ class PipelineRunner:
 
             cmd = (
                 f"runoak -i {ont_identifier} ontology-metadata --all | "
-                f"{self.config.yq_path} eval '.[\"owl:versionIRI\"][0]' - > {key}_version"
+                f'{self.config.yq_path} eval \'.[\"owl:versionIRI\"][0]\' - > {key}_version'
             )
             self.run_command(cmd)
 

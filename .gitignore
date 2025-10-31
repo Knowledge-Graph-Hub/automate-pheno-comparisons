@@ -1,0 +1,5 @@
+/tmp
+/ontologies
+/__pycache__
+/working
+make_output.log
