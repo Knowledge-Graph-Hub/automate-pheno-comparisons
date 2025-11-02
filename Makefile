@@ -3,7 +3,7 @@
 # Default values from Jenkinsfile
 WORKING_DIR ?= ./working
 RESNIK_THRESHOLD ?= 1.5
-PYTHON ?= python3
+RUN ?= uv run
 
 help:
 	@echo "Phenotype Comparison Pipeline Makefile"
@@ -39,15 +39,16 @@ prepare-dbs: ontologies/phenio-default.db ontologies/phenio-equivalent.db
 
 # Run setup only (downloads tools and data)
 setup:
-	mkdir -p $(WORKING_DIR)
-	$(PYTHON) run_pipeline.py \
+	$(RUN) run_pipeline.py \
+		--run-name $@ \
 		--working-dir $(WORKING_DIR) \
 		--resnik-threshold $(RESNIK_THRESHOLD) \
 		--test-mode
 
 # Run with custom PHENIO database
 custom-phenio-%:
-	$(PYTHON) run_pipeline.py \
+	$(RUN) run_pipeline.py \
+		--run-name $@ \
 		--working-dir $(WORKING_DIR) \
 		--resnik-threshold $(RESNIK_THRESHOLD) \
 		--custom-phenio ontologies/phenio-$*.db \
@@ -56,6 +57,7 @@ custom-phenio-%:
 # Clean working directory
 clean:
 	rm -rf $(WORKING_DIR)
+	mkdir -p $(WORKING_DIR)
 
 # Display help
 help:
@@ -68,7 +70,7 @@ help:
 	@echo "Variables:"
 	@echo "  WORKING_DIR       - Working directory (default: ./working)"
 	@echo "  RESNIK_THRESHOLD  - Min ancestor information content (default: 1.5)"
-	@echo "  PYTHON            - Python interpreter (default: python3)"
+	@echo "  RUN            - Python interpreter (default: python3)"
 	@echo "  PHENIO_DB         - Path to custom PHENIO database (for custom-phenio target)"
 	@echo ""
 	@echo "Examples:"

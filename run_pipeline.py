@@ -6,12 +6,23 @@ This script replicates the Jenkins pipeline for semantic similarity analysis
 between HP (Human Phenotype), MP (Mammalian Phenotype), and ZP (Zebrafish Phenotype)
 ontologies using PHENIO.
 
+Directory Structure:
+    The pipeline uses a two-level directory structure:
+    - working/ : Shared directory for reusable tools (duckdb, yq)
+    - working/<run-name>/ : Run-specific directory for data files and results
+
+    By default, <run-name> is the current date (YYYYMMDD), but can be customized
+    with the --run-name option.
+
 Usage:
     python run_pipeline.py [options]
 
 Examples:
-    # Run full pipeline with all comparisons
+    # Run full pipeline with all comparisons (creates working/YYYYMMDD/)
     python run_pipeline.py
+
+    # Run with custom run name (creates working/my-run/)
+    python run_pipeline.py --run-name my-run
 
     # Run only HP vs HP comparison
     python run_pipeline.py --comparison hp-hp
@@ -124,7 +135,7 @@ class ProgressTimer:
 class PipelineConfig:
     """Configuration for the phenotype comparison pipeline."""
 
-    def __init__(self, working_dir: Path, custom_phenio: Optional[Path] = None):
+    def __init__(self, working_dir: Path, run_name: Optional[str] = None, custom_phenio: Optional[Path] = None):
         # Convert to absolute path immediately to avoid issues with os.chdir
         self.working_dir = Path(working_dir).absolute()
         self.custom_phenio = Path(
@@ -132,6 +143,12 @@ class PipelineConfig:
 
         # Date-based naming
         self.build_date = datetime.now().strftime('%Y%m%d')
+
+        # Run name for subdirectory (defaults to date if not provided)
+        self.run_name = run_name if run_name else self.build_date
+
+        # Run-specific directory: all run artifacts go here
+        self.run_dir = self.working_dir / self.run_name
 
         # Pipeline parameters
         self.resnik_threshold = '1.5'
@@ -152,7 +169,7 @@ class PipelineConfig:
         self.zp_version: Optional[str] = None
         self.phenio_version: Optional[str] = None
 
-        # Tools
+        # Tools in shared working directory (reusable across runs)
         self.duckdb_path = self.working_dir / 'duckdb'
         self.yq_path = self.working_dir / 'yq'
 
@@ -191,9 +208,12 @@ class PipelineRunner:
     def __init__(self, config: PipelineConfig):
         self.config = config
 
-    def run_command(self, command: str, shell: bool = True, check: bool = True) -> subprocess.CompletedProcess:
+    def run_command(self, command: str, shell: bool = True, check: bool = True, cwd: Optional[Path] = None) -> subprocess.CompletedProcess:
         """Run a shell command and return the result."""
         logger.info(f"Running: {command}")
+        # Default to run_dir for commands unless specified otherwise
+        if cwd is None:
+            cwd = self.config.run_dir
         try:
             result = subprocess.run(
                 command,
@@ -201,7 +221,7 @@ class PipelineRunner:
                 check=check,
                 capture_output=True,
                 text=True,
-                cwd=str(self.config.working_dir)
+                cwd=str(cwd)
             )
             if result.stdout:
                 logger.debug(f"Output: {result.stdout}")
@@ -234,15 +254,18 @@ class PipelineRunner:
             logger.error(f"Failed to download {url}: {e}")
             raise
 
-    def download_and_extract_zip(self, url: str, extract_to: Path) -> None:
+    def download_and_extract_zip(self, url: str, extract_to: Path, temp_dir: Optional[Path] = None) -> None:
         """
         Download a zip file and extract it.
 
         Args:
             url: URL of the zip file
             extract_to: Directory to extract files to
+            temp_dir: Optional directory for temporary zip file (defaults to extract_to)
         """
-        zip_path = extract_to / "temp_download.zip"
+        if temp_dir is None:
+            temp_dir = extract_to
+        zip_path = temp_dir / "temp_download.zip"
         self.download_file(url, zip_path)
 
         logger.info(f"Extracting {zip_path.name}...")
@@ -273,14 +296,19 @@ class PipelineRunner:
             raise
 
     def setup_working_directory(self):
-        """Create and initialize the working directory."""
+        """Create and initialize the working directory and run subdirectory."""
         logger.info(f"Setting up working directory: {self.config.working_dir}")
         self.config.working_dir.mkdir(parents=True, exist_ok=True)
-        os.chdir(self.config.working_dir)
+
+        logger.info(f"Setting up run directory: {self.config.run_dir}")
+        self.config.run_dir.mkdir(parents=True, exist_ok=True)
+
+        # Change to run directory for all operations
+        os.chdir(self.config.run_dir)
 
     def install_tools(self):
-        """Download and install required command-line tools (duckdb, yq)."""
-        logger.info("Installing required tools...")
+        """Download and install required command-line tools (duckdb, yq) in shared working directory."""
+        logger.info("Installing required tools in shared directory...")
 
         # Detect platform
         system = platform.system().lower()
@@ -305,25 +333,26 @@ class PipelineRunner:
         else:
             raise RuntimeError(f"Unsupported platform: {system}")
 
-        # Install DuckDB
+        # Install DuckDB in shared working directory
         if not self.config.duckdb_path.exists():
-            logger.info(f"Downloading DuckDB for {system} ({machine})...")
+            logger.info(f"Downloading DuckDB for {system} ({machine}) to {self.config.working_dir}...")
             duckdb_url = f"https://github.com/duckdb/duckdb/releases/download/v0.10.3/duckdb_cli-{duckdb_platform}.zip"
-            self.download_and_extract_zip(duckdb_url, self.config.working_dir)
-            self.run_command(f"chmod +x {self.config.duckdb_path}")
-            logger.info("DuckDB installed")
+            # Extract to working_dir, use run_dir for temp zip file
+            self.download_and_extract_zip(duckdb_url, self.config.working_dir, temp_dir=self.config.run_dir)
+            self.run_command(f"chmod +x {self.config.duckdb_path}", cwd=self.config.working_dir)
+            logger.info(f"DuckDB installed at {self.config.duckdb_path}")
         else:
-            logger.info("DuckDB already installed")
+            logger.info(f"DuckDB already installed at {self.config.duckdb_path}")
 
-        # Install yq
+        # Install yq in shared working directory
         if not self.config.yq_path.exists():
-            logger.info(f"Downloading yq for {system} ({machine})...")
+            logger.info(f"Downloading yq for {system} ({machine}) to {self.config.working_dir}...")
             yq_url = f"https://github.com/mikefarah/yq/releases/download/v4.48.1/yq_{yq_platform}"
             self.download_file(yq_url, self.config.yq_path)
-            self.run_command(f"chmod +x {self.config.yq_path}")
-            logger.info("yq installed")
+            self.run_command(f"chmod +x {self.config.yq_path}", cwd=self.config.working_dir)
+            logger.info(f"yq installed at {self.config.yq_path}")
         else:
-            logger.info("yq already installed")
+            logger.info(f"yq already installed at {self.config.yq_path}")
 
     def get_ontology_versions(self):
         """Retrieve version information for all ontologies."""
@@ -352,8 +381,8 @@ class PipelineRunner:
             )
             self.run_command(cmd)
 
-            # Read version from file
-            version_file = self.config.working_dir / f"{key}_version"
+            # Read version from file (now in run_dir)
+            version_file = self.config.run_dir / f"{key}_version"
             if version_file.exists():
                 version = version_file.read_text().strip()
                 setattr(self.config, f"{key}_version", version)
@@ -368,19 +397,19 @@ class PipelineRunner:
         # Download HPOA (Human Phenotype Ontology Annotations)
         logger.info("Downloading HPOA...")
         hpoa_url = "http://purl.obolibrary.org/obo/hp/hpoa/phenotype.hpoa"
-        self.download_file(hpoa_url, self.config.working_dir / 'hpoa.tsv')
+        self.download_file(hpoa_url, self.config.run_dir / 'hpoa.tsv')
 
         # Download MPA (Mouse Phenotype Annotations)
         logger.info("Downloading MPA...")
         mpa_url = "https://data.monarchinitiative.org/dipper-kg/final/tsv/gene_associations/gene_phenotype.10090.tsv.gz"
         self.download_and_decompress_gzip(
-            mpa_url, self.config.working_dir / 'mpa.tsv')
+            mpa_url, self.config.run_dir / 'mpa.tsv')
 
         # Download ZPA (Zebrafish Phenotype Annotations)
         logger.info("Downloading ZPA...")
         zpa_url = "https://data.monarchinitiative.org/dipper-kg/final/tsv/gene_associations/gene_phenotype.7955.tsv.gz"
         self.download_and_decompress_gzip(
-            zpa_url, self.config.working_dir / 'zpa.tsv')
+            zpa_url, self.config.run_dir / 'zpa.tsv')
 
         # Preprocess MP and ZP to pairwise associations
         logger.info("Preprocessing association tables...")
@@ -470,17 +499,17 @@ class PipelineRunner:
             if value:
                 log_content.append(f"  {key}: {value}")
 
-        log_path = self.config.working_dir / output_file
+        log_path = self.config.run_dir / output_file
         log_path.write_text('\n'.join(log_content) + '\n')
 
     def create_tarball(self, output_name: str, files: List[str]):
         """Create a compressed tarball of results."""
         logger.info(f"Creating tarball: {output_name}...")
 
-        tarball_path = self.config.working_dir / output_name
+        tarball_path = self.config.run_dir / output_name
         with tarfile.open(tarball_path, 'w:gz') as tar:
             for file in files:
-                file_path = self.config.working_dir / file
+                file_path = self.config.run_dir / file
                 if file_path.exists():
                     tar.add(file_path, arcname=file)
                     logger.info(f"  Added {file}")
@@ -517,7 +546,7 @@ class PipelineRunner:
         logger.info("=" * 80)
 
         # Get terms for first ontology (skip if already done)
-        if not (self.config.working_dir / f"{ont1_prefix}_terms.txt").exists():
+        if not (self.config.run_dir / f"{ont1_prefix}_terms.txt").exists():
             self.get_ontology_terms(ont1, ont1_root, ont1_prefix)
 
         # Get terms for second ontology (if different from first)
@@ -611,6 +640,7 @@ class PipelineRunner:
         """Run the complete pipeline."""
         logger.info("Starting phenotype comparison pipeline...")
         logger.info(f"Working directory: {self.config.working_dir}")
+        logger.info(f"Run directory: {self.config.run_dir}")
         logger.info(f"Build date: {self.config.build_date}")
 
         try:
@@ -622,7 +652,7 @@ class PipelineRunner:
             logger.info("=" * 80)
             logger.info("PIPELINE COMPLETE!")
             logger.info("=" * 80)
-            logger.info(f"Results are in: {self.config.working_dir}")
+            logger.info(f"Results are in: {self.config.run_dir}")
 
         except Exception as e:
             logger.error(f"Pipeline failed: {e}")
@@ -641,7 +671,13 @@ def main():
         '--working-dir',
         type=str,
         default='./working',
-        help='Working directory for pipeline execution (default: ./working)'
+        help='Working directory for shared tools (default: ./working)'
+    )
+
+    parser.add_argument(
+        '--run-name',
+        type=str,
+        help='Name for this run subdirectory (default: YYYYMMDD date)'
     )
 
     parser.add_argument(
@@ -694,6 +730,7 @@ def main():
         args.custom_phenio) if args.custom_phenio else None
     config = PipelineConfig(
         working_dir=Path(args.working_dir),
+        run_name=args.run_name,
         custom_phenio=custom_phenio_path
     )
     config.resnik_threshold = args.resnik_threshold
@@ -718,7 +755,7 @@ def main():
             runner.setup_working_directory()
             # Try to load versions from files if they exist
             for ont in ['hp', 'mp', 'zp', 'phenio']:
-                version_file = config.working_dir / f"{ont}_version"
+                version_file = config.run_dir / f"{ont}_version"
                 if version_file.exists():
                     setattr(config, f"{ont}_version",
                             version_file.read_text().strip())
@@ -746,7 +783,7 @@ def main():
         logger.info("=" * 80)
         logger.info("SUCCESS! Pipeline completed successfully.")
         logger.info("=" * 80)
-        logger.info(f"Results are in: {config.working_dir}")
+        logger.info(f"Results are in: {config.run_dir}")
 
     except KeyboardInterrupt:
         logger.warning("Pipeline interrupted by user")
