@@ -52,7 +52,27 @@ custom-phenio-%:
 		--working-dir $(WORKING_DIR) \
 		--resnik-threshold $(RESNIK_THRESHOLD) \
 		--custom-phenio ontologies/phenio-$*.db \
-		--comparison hp-mp
+		--comparison all
+
+# Generate SQL file from semantic similarity results
+# Creates: working/<run-name>/HP_vs_MP_semsimian_phenio_exomiser.sql
+sql-%: working/%/HP_vs_MP_semsimian_phenio.tsv
+	$(RUN) monarch-semsim semsim-to-exomisersql \
+		--input-file working/$*/HP_vs_MP_semsimian_phenio.tsv \
+		--subject-prefix HP \
+		--object-prefix MP \
+		--output working/$*/HP_vs_MP_semsimian_phenio_exomiser.sql
+	$(RUN) monarch-semsim semsim-to-exomisersql \
+		--input-file working/$*/HP_vs_HP_semsimian_phenio.tsv \
+		--subject-prefix HP \
+		--object-prefix HP \
+		--output working/$*/HP_vs_HP_semsimian_phenio_exomiser.sql
+	$(RUN) monarch-semsim semsim-to-exomisersql \
+		--input-file working/$*/HP_vs_ZP_semsimian_phenio.tsv \
+		--subject-prefix HP \
+		--object-prefix ZP \
+		--output working/$*/HP_vs_ZP_semsimian_phenio_exomiser.sql
+	echo "Generated Exomiser SQL files on $(date)" > working/$*/log_sql_generation.txt
 
 # Clean working directory
 clean:
@@ -63,19 +83,23 @@ clean:
 help:
 	@echo "Phenotype Comparison Pipeline Makefile"
 	@echo ""
-	@echo "make download-ontologies: Download all configured ontologies"
-	@echo "make prepare-dbs: Prepare databases from downloaded ontologies"
-	@echo ""
+	@echo "Targets:"
+	@echo "  download-ontologies        - Download all configured ontologies"
+	@echo "  prepare-dbs                - Prepare databases from downloaded ontologies"
+	@echo "  setup                      - Run setup only (downloads tools and data)"
+	@echo "  custom-phenio-<name>       - Run pipeline with custom PHENIO database"
+	@echo "  sql_<run-name>             - Generate Exomiser SQL from similarity results"
+	@echo "  clean                      - Clean up working directory"
 	@echo ""
 	@echo "Variables:"
 	@echo "  WORKING_DIR       - Working directory (default: ./working)"
 	@echo "  RESNIK_THRESHOLD  - Min ancestor information content (default: 1.5)"
-	@echo "  RUN            - Python interpreter (default: python3)"
-	@echo "  PHENIO_DB         - Path to custom PHENIO database (for custom-phenio target)"
+	@echo "  RUN               - Command prefix (default: uv run)"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make                                    # Run full pipeline"
-	@echo "  make hp-hp                              # Run HP vs HP only"
-	@echo "  make RESNIK_THRESHOLD=2.0               # Use custom threshold"
-	@echo "  make custom-phenio PHENIO_DB=my.db      # Use custom PHENIO"
-	@echo "  make clean                              # Clean up working directory"
+	@echo "  make setup                                      # Setup tools and data"
+	@echo "  make custom-phenio-default                      # Run with default PHENIO"
+	@echo "  make custom-phenio-equivalent                   # Run with equivalent PHENIO"
+	@echo "  make sql_custom-phenio-default                  # Generate SQL from results"
+	@echo "  make RESNIK_THRESHOLD=2.0 custom-phenio-default # Use custom threshold"
+	@echo "  make clean                                      # Clean up working directory"
