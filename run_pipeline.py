@@ -27,6 +27,9 @@ Examples:
     # Run only HP vs HP comparison
     python run_pipeline.py --comparison hp-hp
 
+    # Run multiple specific comparisons
+    python run_pipeline.py --comparison hp-hp hp-mp
+
     # Use custom PHENIO database
     python run_pipeline.py --custom-phenio /path/to/phenio.db
 
@@ -153,15 +156,10 @@ class PipelineConfig:
         # Pipeline parameters
         self.resnik_threshold = '1.5'
 
-        # Output prefixes
-        self.hp_vs_hp_prefix = "HP_vs_HP_semsimian_phenio"
-        self.hp_vs_mp_prefix = "HP_vs_MP_semsimian_phenio"
-        self.hp_vs_zp_prefix = "HP_vs_ZP_semsimian_phenio"
-
-        # Output names with date
-        self.hp_vs_hp_name = f"{self.hp_vs_hp_prefix}_{self.build_date}"
-        self.hp_vs_mp_name = f"{self.hp_vs_mp_prefix}_{self.build_date}"
-        self.hp_vs_zp_name = f"{self.hp_vs_zp_prefix}_{self.build_date}"
+        # Output names (no version numbers - stable filenames)
+        self.hp_vs_hp_name = "HP_vs_HP_semsimian_phenio"
+        self.hp_vs_mp_name = "HP_vs_MP_semsimian_phenio"
+        self.hp_vs_zp_name = "HP_vs_ZP_semsimian_phenio"
 
         # Ontology versions (will be populated during setup)
         self.hp_version: Optional[str] = None
@@ -535,10 +533,9 @@ class PipelineRunner:
             association_file: Association file for information content (e.g., 'hpoa.tsv', 'mpa.tsv')
             association_type: Association type for oaklib (e.g., 'hpoa', 'g2t')
         """
-        # Determine output names from config
+        # Determine output name from config (no version numbers)
         comparison_key = f"{ont1}_vs_{ont2}"
         output_name = getattr(self.config, f"{comparison_key}_name")
-        output_prefix = getattr(self.config, f"{comparison_key}_prefix")
 
         logger.info("=" * 80)
         logger.info(
@@ -586,7 +583,7 @@ class PipelineRunner:
         self.create_log_file(output_name, versions, f"{output_name}_log.yaml")
 
         # Create tarball
-        tarball_name = f"{output_prefix}.tar.gz"
+        tarball_name = f"{output_name}.tar.gz"
         files = [
             f"{output_name}.tsv",
             f"{output_name}_log.yaml",
@@ -683,9 +680,10 @@ def main():
     parser.add_argument(
         '--comparison',
         type=str,
+        nargs='+',
         choices=['all', 'hp-hp', 'hp-mp', 'hp-zp'],
-        default='all',
-        help='Which comparison(s) to run (default: all)'
+        default=['all'],
+        help='Which comparison(s) to run (default: all). Can specify multiple.'
     )
 
     parser.add_argument(
@@ -769,16 +767,22 @@ def main():
             logger.info("Downloaded files are ready in the working directory.")
             logger.info(
                 "To run comparisons, execute without --test-mode flag.")
-        elif args.comparison == 'all':
-            runner.run_hp_vs_hp()
-            runner.run_hp_vs_mp()
-            runner.run_hp_vs_zp()
-        elif args.comparison == 'hp-hp':
-            runner.run_hp_vs_hp()
-        elif args.comparison == 'hp-mp':
-            runner.run_hp_vs_mp()
-        elif args.comparison == 'hp-zp':
-            runner.run_hp_vs_zp()
+        else:
+            # Determine which comparisons to run
+            comparisons_to_run = []
+            if 'all' in args.comparison:
+                comparisons_to_run = ['hp-hp', 'hp-mp', 'hp-zp']
+            else:
+                comparisons_to_run = args.comparison
+
+            # Run each requested comparison
+            for comparison in comparisons_to_run:
+                if comparison == 'hp-hp':
+                    runner.run_hp_vs_hp()
+                elif comparison == 'hp-mp':
+                    runner.run_hp_vs_mp()
+                elif comparison == 'hp-zp':
+                    runner.run_hp_vs_zp()
 
         logger.info("=" * 80)
         logger.info("SUCCESS! Pipeline completed successfully.")
