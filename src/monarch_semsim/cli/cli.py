@@ -43,8 +43,17 @@ def cli():
     help="""Path where the SQL file will be written.""",
     type=Path,
 )
+@click.option(
+    "--threshold",
+    "-t",
+    required=False,
+    default=0.0,
+    metavar="threshold",
+    help="Minimum SCORE threshold for filtering results. Default: 0.0",
+    type=float,
+)
 def semsim_to_exomisersql_command(
-    input_file: Path, object_prefix: str, subject_prefix: str, output: Path
+    input_file: Path, object_prefix: str, subject_prefix: str, output: Path, threshold: float
 ):
     """converts semsim file as an exomiser phenotypic database SQL format
 
@@ -53,8 +62,9 @@ def semsim_to_exomisersql_command(
         object_prefix (str): object prefix. e.g. MP
         subject_prefix (str): subject prefix e.g HP
         output (Path): Path where the SQL file will be written.
+        threshold (float): Minimum SCORE threshold for filtering results.
     """
-    semsim_to_exomisersql(input_file, object_prefix, subject_prefix, output)
+    semsim_to_exomisersql(input_file, object_prefix, subject_prefix, output, threshold)
 
 
 

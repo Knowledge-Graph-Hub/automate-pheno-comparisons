@@ -86,16 +86,19 @@ sql-%: working/%/HP_vs_MP.tsv
 		--input-file workingc/$*/HP_vs_MP.tsv \
 		--subject-prefix HP \
 		--object-prefix MP \
+		--threshold 0.5 \
 		--output workingc/$*/HP_vs_MP_semsimian_phenio_exomiser.sql
 	$(RUN) monarch-semsim semsim-to-exomisersql \
 		--input-file workingc/$*/HP_vs_HP.tsv \
 		--subject-prefix HP \
 		--object-prefix HP \
+		--threshold 0.5 \
 		--output workingc/$*/HP_vs_HP_semsimian_phenio_exomiser.sql
 	$(RUN) monarch-semsim semsim-to-exomisersql \
 		--input-file workingc/$*/HP_vs_ZP.tsv \
 		--subject-prefix HP \
 		--object-prefix ZP \
+		--threshold 0.5 \
 		--output workingc/$*/HP_vs_ZP_semsimian_phenio_exomiser.sql
 	echo "Generated Exomiser SQL files on $(date)" > workingc/$*/log_sql_generation.txt
 
