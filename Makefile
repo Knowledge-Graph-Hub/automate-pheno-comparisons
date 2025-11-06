@@ -46,7 +46,7 @@ setup:
 		--test-mode
 
 # Run with custom PHENIO database
-custom-phenio-%:
+semsim-phenio-%:
 	$(RUN) run_pipeline.py \
 		--run-name $@ \
 		--working-dir $(WORKING_DIR) \
@@ -54,25 +54,50 @@ custom-phenio-%:
 		--custom-phenio ontologies/phenio-$*.db \
 		--comparison all
 
+semsim-ols-cosinemegatron:
+	mkdir -p $(WORKING_DIR)/semsim-ols-cosinemegatron
+	wget https://ftp.ebi.ac.uk/pub/databases/spot/ols_embeddings/semsim/hp_zp__llama-embed-nemotron-8b.tsv.gz -O $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_zp__llama-embed-nemotron-8b.tsv.gz
+	gunzip $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_zp__llama-embed-nemotron-8b.tsv.gz
+	mv $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_zp__llama-embed-nemotron-8b.tsv $(WORKING_DIR)/$@/HP_vs_ZP.tsv
+	wget https://ftp.ebi.ac.uk/pub/databases/spot/ols_embeddings/semsim/hp_mp__llama-embed-nemotron-8b.tsv.gz -O $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_mp__llama-embed-nemotron-8b.tsv.gz
+	gunzip $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_mp__llama-embed-nemotron-8b.tsv.gz
+	mv $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_mp__llama-embed-nemotron-8b.tsv $(WORKING_DIR)/$@/HP_vs_MP.tsv
+	wget https://ftp.ebi.ac.uk/pub/databases/spot/ols_embeddings/semsim/hp_hp__llama-embed-nemotron-8b.tsv.gz -O $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_hp__llama-embed-nemotron-8b.tsv.gz
+	gunzip $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_hp__llama-embed-nemotron-8b.tsv.gz
+	mv $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_hp__llama-embed-nemotron-8b.tsv $(WORKING_DIR)/$@/HP_vs_HP.tsv
+
+semsim-ols-cosinetextsmall:
+	mkdir -p $(WORKING_DIR)/semsim-ols-cosinetextsmall
+	wget https://ftp.ebi.ac.uk/pub/databases/spot/ols_embeddings/semsim_text-embedding-3-small/hp_hp__text-embedding-3-small.tsv.gz -O $(WORKING_DIR)/semsim-ols-cosinetextsmall/hp_hp__text-embedding-3-small.tsv.gz
+	gunzip $(WORKING_DIR)/semsim-ols-cosinetextsmall/hp_hp__text-embedding-3-small.tsv.gz
+	mv $(WORKING_DIR)/semsim-ols-cosinetextsmall/hp_hp__text-embedding-3-small.tsv $(WORKING_DIR)/$@/HP_vs_HP.tsv
+	wget https://ftp.ebi.ac.uk/pub/databases/spot/ols_embeddings/semsim_text-embedding-3-small/hp_mp__text-embedding-3-small.tsv.gz -O $(WORKING_DIR)/semsim-ols-cosinetextsmall/hp_mp__text-embedding-3-small.tsv.gz
+	gunzip $(WORKING_DIR)/semsim-ols-cosinetextsmall/hp_mp__text-embedding-3-small.tsv.gz
+	mv $(WORKING_DIR)/semsim-ols-cosinetextsmall/hp_mp__text-embedding-3-small.tsv $(WORKING_DIR)/$@/HP_vs_MP.tsv
+	wget https://ftp.ebi.ac.uk/pub/databases/spot/ols_embeddings/semsim_text-embedding-3-small/hp_zp__text-embedding-3-small.tsv.gz -O $(WORKING_DIR)/semsim-ols-cosinetextsmall/hp_zp__text-embedding-3-small.tsv.gz
+	gunzip $(WORKING_DIR)/semsim-ols-cosinetextsmall/hp_zp__text-embedding-3-small.tsv.gz
+	mv $(WORKING_DIR)/semsim-ols-cosinetextsmall/hp_zp__text-embedding-3-small.tsv $(WORKING_DIR)/$@/HP_vs_ZP.tsv
+
+# TODO rename tables
 # Generate SQL file from semantic similarity results
 # Creates: working/<run-name>/HP_vs_MP_semsimian_phenio_exomiser.sql
-sql-%: working/%/HP_vs_MP_semsimian_phenio.tsv
+sql-%: working/%/HP_vs_MP.tsv
 	$(RUN) monarch-semsim semsim-to-exomisersql \
-		--input-file working/$*/HP_vs_MP_semsimian_phenio.tsv \
+		--input-file workingc/$*/HP_vs_MP.tsv \
 		--subject-prefix HP \
 		--object-prefix MP \
-		--output working/$*/HP_vs_MP_semsimian_phenio_exomiser.sql
+		--output workingc/$*/HP_vs_MP_semsimian_phenio_exomiser.sql
 	$(RUN) monarch-semsim semsim-to-exomisersql \
-		--input-file working/$*/HP_vs_HP_semsimian_phenio.tsv \
+		--input-file workingc/$*/HP_vs_HP.tsv \
 		--subject-prefix HP \
 		--object-prefix HP \
-		--output working/$*/HP_vs_HP_semsimian_phenio_exomiser.sql
+		--output workingc/$*/HP_vs_HP_semsimian_phenio_exomiser.sql
 	$(RUN) monarch-semsim semsim-to-exomisersql \
-		--input-file working/$*/HP_vs_ZP_semsimian_phenio.tsv \
+		--input-file workingc/$*/HP_vs_ZP.tsv \
 		--subject-prefix HP \
 		--object-prefix ZP \
-		--output working/$*/HP_vs_ZP_semsimian_phenio_exomiser.sql
-	echo "Generated Exomiser SQL files on $(date)" > working/$*/log_sql_generation.txt
+		--output workingc/$*/HP_vs_ZP_semsimian_phenio_exomiser.sql
+	echo "Generated Exomiser SQL files on $(date)" > workingc/$*/log_sql_generation.txt
 
 # Clean working directory
 clean:
@@ -98,8 +123,4 @@ help:
 	@echo ""
 	@echo "Examples:"
 	@echo "  make setup                                      # Setup tools and data"
-	@echo "  make custom-phenio-default                      # Run with default PHENIO"
-	@echo "  make custom-phenio-equivalent                   # Run with equivalent PHENIO"
-	@echo "  make sql_custom-phenio-default                  # Generate SQL from results"
-	@echo "  make RESNIK_THRESHOLD=2.0 custom-phenio-default # Use custom threshold"
 	@echo "  make clean                                      # Clean up working directory"

@@ -1,5 +1,43 @@
+# Build and temp directories
 /tmp
 /ontologies
 /__pycache__
 /working
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Logs
 make_output.log
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+/workingc

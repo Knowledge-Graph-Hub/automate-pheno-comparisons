@@ -157,9 +157,9 @@ class PipelineConfig:
         self.resnik_threshold = '1.5'
 
         # Output names (no version numbers - stable filenames)
-        self.hp_vs_hp_name = "HP_vs_HP_semsimian_phenio"
-        self.hp_vs_mp_name = "HP_vs_MP_semsimian_phenio"
-        self.hp_vs_zp_name = "HP_vs_ZP_semsimian_phenio"
+        self.hp_vs_hp_name = "HP_vs_HP"
+        self.hp_vs_mp_name = "HP_vs_MP"
+        self.hp_vs_zp_name = "HP_vs_ZP"
 
         # Ontology versions (will be populated during setup)
         self.hp_version: Optional[str] = None
@@ -576,7 +576,8 @@ class PipelineRunner:
 
         # Create log file with appropriate versions
         versions = {'hp': self.config.hp_version,
-                    'phenio': self.config.phenio_version}
+                    'phenio': self.config.phenio_version,
+                    'date': self.config.build_date}
         if ont2 != 'hp':
             versions[ont2] = getattr(self.config, f"{ont2}_version")
 
