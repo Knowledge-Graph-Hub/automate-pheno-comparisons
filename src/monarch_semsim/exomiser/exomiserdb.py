@@ -59,8 +59,25 @@ def _format_row(mapping_id, data):
         mapping_id (_type_): row sequencial id
         data (_type_): row data
     """
+    # Handle optional columns with defaults
+    jaccard_similarity = data.get('jaccard_similarity', 0)
+    ancestor_information_content = data.get('ancestor_information_content', 0)
+
+    # Use phenodigm_score if present, otherwise fall back to cosine_similarity
+    if 'phenodigm_score' in data:
+        score = data['phenodigm_score']
+    elif 'cosine_similarity' in data:
+        score = data['cosine_similarity']
+    else:
+        score = 0
+
+    # Handle optional ancestor_id
+    ancestor_id = data.get('ancestor_id', 'HP:0000000')
+    ancestor_label = data.get('ancestor_label', 'phenotype')
+    ancestor_id_first = ancestor_id.split(",")[0] if ancestor_id else ''
+
     # TODO:Improve string escaping. Replace this code with parametrised query
-    return f"""({mapping_id}, '{data['subject_id']}', '{data['subject_label'].replace("'", "")}', '{data['object_id']}', '{data['object_label'].replace("'", "")}', {data['jaccard_similarity']}, {data['ancestor_information_content']}, {data['phenodigm_score']}, '{data['ancestor_id'].split(",")[0]}', '{data['ancestor_label'].replace("'", "")}')"""  # noqa
+    return f"""({mapping_id}, '{data['subject_id']}', '{data['subject_label'].replace("'", "")}', '{data['object_id']}', '{data['object_label'].replace("'", "")}', {jaccard_similarity}, {ancestor_information_content}, {score}, '{ancestor_id_first}', '{ancestor_label.replace("'", "")}')"""  # noqa
 
 
 def _prepare_rows(
