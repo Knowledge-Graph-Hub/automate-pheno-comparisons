@@ -1,6 +1,5 @@
 # -*- coding: cp936 -*-
 import logging as log
-import sqlite3
 from pathlib import Path
 
 import polars as pl
@@ -10,13 +9,19 @@ info_log = log.getLogger("info")
 info_debug = log.getLogger("debug")
 
 
-def semsim_to_exomisersql(input_file: Path, subject_prefix: str, object_prefix: str, output: Path, threshold: float = 0.0):
+def semsim_to_exomisersql(
+    input_file: Path,
+    subject_prefix: str,
+    object_prefix: str,
+    output: Path,
+    threshold: float = 0.0,
+    batch_size: int = 100000
+):
     """
-    Convert a semantic similarity file to SQL statements and write them to a file.
+    Convert a semantic similarity file to SQL statements for H2 database import.
 
-    This function reads a tab-separated semantic similarity file, generates SQL statements
-    to create a table in an exomiser phenotypic table format, truncate existing data, and insert new data.
-    The resulting SQL statements are written to the specified output file.
+    This function reads a tab-separated semantic similarity file and generates
+    SQL INSERT statements that can be imported into an H2 database.
 
     Args:
         input_file (Path): Path to the input semantic similarity file (TSV format).
@@ -24,6 +29,7 @@ def semsim_to_exomisersql(input_file: Path, subject_prefix: str, object_prefix: 
         object_prefix (str): Prefix for the object columns (e.g., 'MP' for Mouse Phenotype).
         output (Path): Path to the output SQL file.
         threshold (float): Minimum SCORE threshold for filtering results. Default: 0.0.
+        batch_size (int): Number of rows to process per batch. Default: 100000.
 
     Returns:
         None
@@ -31,26 +37,9 @@ def semsim_to_exomisersql(input_file: Path, subject_prefix: str, object_prefix: 
     Raises:
         IOError: If there are issues reading the input file or writing to the output file.
     """
-
-    output.unlink(missing_ok=True)
-    # Read the input file in batches
-    reader = pl.read_csv_batched(input_file, separator="\t")
-    batch_length = 5
-    batches = reader.next_batches(batch_length)
-    total_rows = sum(1 for _ in open(input_file)) - 1  # Subtract 1 for header
-
-    with tqdm(total=total_rows, desc="Processing rows") as pbar:
-        mapping_id = 1
-        while batches:
-            input_data = pl.concat(batches)
-            sql = _prepare_rows(input_data, object_prefix, subject_prefix, mapping_id=mapping_id, threshold=threshold)
-            with open(output, 'a') as writer:
-                writer.writelines(sql)
-                len_input_data = len(input_data)
-                mapping_id += len_input_data
-                pbar.update(len_input_data)
-
-                batches = reader.next_batches(batch_length)
+    _write_to_sql_file(
+        input_file, subject_prefix, object_prefix, output, threshold, batch_size
+    )
 
 
 def _get_score(data):
@@ -126,3 +115,51 @@ VALUES"""
 
     sql += ",\n".join(rows) + ";"
     return sql
+
+
+def _write_to_sql_file(
+    input_file: Path,
+    subject_prefix: str,
+    object_prefix: str,
+    output: Path,
+    threshold: float = 0.0,
+    batch_size: int = 100000
+):
+    """
+    Generate SQL file from semantic similarity data.
+
+    This is the optimized version with better batching for large-scale data processing.
+
+    Args:
+        input_file (Path): Input TSV file
+        subject_prefix (str): Subject prefix (e.g., 'HP')
+        object_prefix (str): Object prefix (e.g., 'MP')
+        output (Path): Output SQL file path
+        threshold (float): Minimum score threshold
+        batch_size (int): Number of rows per batch
+    """
+    output.unlink(missing_ok=True)
+
+    # Read the input file in batches with improved batch size
+    reader = pl.read_csv_batched(input_file, separator="\t", batch_size=batch_size)
+
+    # Estimate total rows from file size (approximate, avoids full file scan)
+    file_size = input_file.stat().st_size
+    # Rough estimate: ~200 bytes per row average
+    estimated_rows = file_size // 200
+
+    with open(output, 'w') as writer:
+        with tqdm(total=estimated_rows, desc="Processing rows", unit="rows") as pbar:
+            mapping_id = 1
+            batches = reader.next_batches(1)
+
+            while batches:
+                input_data = batches[0]
+                sql = _prepare_rows(input_data, object_prefix, subject_prefix, mapping_id=mapping_id, threshold=threshold)
+                writer.write(sql + "\n")
+
+                len_input_data = len(input_data)
+                mapping_id += len_input_data
+                pbar.update(len_input_data)
+
+                batches = reader.next_batches(1)

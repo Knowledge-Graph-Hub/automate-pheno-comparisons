@@ -52,8 +52,17 @@ def cli():
     help="Minimum SCORE threshold for filtering results. Default: 0.0",
     type=float,
 )
+@click.option(
+    "--batch-size",
+    "-b",
+    required=False,
+    default=100000,
+    metavar="batch-size",
+    help="Number of rows to process in each batch. Default: 100000",
+    type=int,
+)
 def semsim_to_exomisersql_command(
-    input_file: Path, object_prefix: str, subject_prefix: str, output: Path, threshold: float
+    input_file: Path, object_prefix: str, subject_prefix: str, output: Path, threshold: float, batch_size: int
 ):
     """converts semsim file as an exomiser phenotypic database SQL format
 
@@ -63,8 +72,10 @@ def semsim_to_exomisersql_command(
         subject_prefix (str): subject prefix e.g HP
         output (Path): Path where the SQL file will be written.
         threshold (float): Minimum SCORE threshold for filtering results.
+        batch_size (int): Number of rows to process in each batch.
     """
-    semsim_to_exomisersql(input_file, object_prefix, subject_prefix, output, threshold)
+    # Call with correct parameter order: input_file, subject_prefix, object_prefix, output, threshold, batch_size
+    semsim_to_exomisersql(input_file, subject_prefix, object_prefix, output, threshold, batch_size)
 
 
 

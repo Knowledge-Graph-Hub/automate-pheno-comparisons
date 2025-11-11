@@ -576,6 +576,9 @@ class PipelineRunner:
 
         # Create log file with appropriate versions
         versions = {'hp': self.config.hp_version,
+                    'run': self.config.run_name,
+                    'mp': self.config.mp_version,
+                    'zp': self.config.zp_version,
                     'phenio': self.config.phenio_version,
                     'date': self.config.build_date}
         if ont2 != 'hp':
