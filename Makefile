@@ -4,11 +4,8 @@
 WORKING_DIR ?= ./working
 RESNIK_THRESHOLD ?= 1.5
 RUN ?= uv run
-
-help:
-	@echo "Phenotype Comparison Pipeline Makefile"
-	@echo "make download-ontologies: Download all configured ontologies"
-	@echo "make prepare-dbs: Prepare databases from downloaded ontologies"
+THRESHOLD ?= 0.4
+BATCH_SIZE ?= 100000
 
 download-ontologies: prepare-phenio-default prepare-phenio-equivalent ontologies/phenio-equivalent.owl
 
@@ -78,29 +75,114 @@ semsim-ols-cosinetextsmall:
 	gunzip $(WORKING_DIR)/semsim-ols-cosinetextsmall/hp_zp__text-embedding-3-small.tsv.gz
 	mv $(WORKING_DIR)/semsim-ols-cosinetextsmall/hp_zp__text-embedding-3-small.tsv $(WORKING_DIR)/$@/HP_vs_ZP.tsv
 
-# TODO rename tables
-# Generate SQL file from semantic similarity results
-# Creates: working/<run-name>/HP_vs_MP_semsimian_phenio_exomiser.sql
-sql-%: working/%/HP_vs_MP.tsv
-	$(RUN) monarch-semsim semsim-to-exomisersql \
-		--input-file workingc/$*/HP_vs_MP.tsv \
-		--subject-prefix HP \
-		--object-prefix MP \
-		--threshold 0.5 \
-		--output workingc/$*/HP_vs_MP_semsimian_phenio_exomiser.sql
-	$(RUN) monarch-semsim semsim-to-exomisersql \
-		--input-file workingc/$*/HP_vs_HP.tsv \
-		--subject-prefix HP \
-		--object-prefix HP \
-		--threshold 0.5 \
-		--output workingc/$*/HP_vs_HP_semsimian_phenio_exomiser.sql
-	$(RUN) monarch-semsim semsim-to-exomisersql \
-		--input-file workingc/$*/HP_vs_ZP.tsv \
-		--subject-prefix HP \
-		--object-prefix ZP \
-		--threshold 0.5 \
-		--output workingc/$*/HP_vs_ZP_semsimian_phenio_exomiser.sql
-	echo "Generated Exomiser SQL files on $(date)" > workingc/$*/log_sql_generation.txt
+# Generate SQL files from semantic similarity results
+# Creates: working/<run-name>/HP_vs_*_semsimian_phenio_exomiser.sql
+# Usage: make exomiser-sql-semsim-phenio-default
+exomiser-sql-%: $(WORKING_DIR)/%/HP_vs_MP.tsv
+	@if [ -f "$(WORKING_DIR)/$*/sql_generation.tar.gz" ]; then \
+		echo "⚠️  Skipping: $(WORKING_DIR)/$*/sql_generation.tar.gz already exists."; \
+	else \
+		echo "🔧 Generating SQL files for run: $*"; \
+		echo "   Using threshold: $(THRESHOLD), batch size: $(BATCH_SIZE)"; \
+		\
+		for pair in HP_vs_MP HP_vs_HP HP_vs_ZP; do \
+			subject=$${pair%%_vs_*}; \
+			object=$${pair##*_vs_}; \
+			$(RUN) monarch-semsim semsim-to-exomisersql \
+				--input-file "$(WORKING_DIR)/$*/$${pair}.tsv" \
+				--subject-prefix "$$object" \
+				--object-prefix "$$subject" \
+				--threshold "$(THRESHOLD)" \
+				--batch-size "$(BATCH_SIZE)" \
+				--output "$(WORKING_DIR)/$*/$${pair}.sql"; \
+		done; \
+		\
+		logfile="$(WORKING_DIR)/$*/log_sql_generation.yml"; \
+		{ \
+			echo "date: $$(date)"; \
+			echo "semsim_threshold: $(THRESHOLD)"; \
+			echo "resnik_threshold: $(RESNIK_THRESHOLD)"; \
+			echo "flavour: $*"; \
+			[ -f "$(WORKING_DIR)/$*/phenio_version" ] && echo "phenio: $$(cat $(WORKING_DIR)/$*/phenio_version)"; \
+			[ -f "$(WORKING_DIR)/$*/hp_version" ] && echo "hp: $$(cat $(WORKING_DIR)/$*/hp_version)"; \
+			[ -f "$(WORKING_DIR)/$*/mp_version" ] && echo "mp: $$(cat $(WORKING_DIR)/$*/mp_version)"; \
+			[ -f "$(WORKING_DIR)/$*/zp_version" ] && echo "zp: $$(cat $(WORKING_DIR)/$*/zp_version)"; \
+		} > "$$logfile"; \
+		\
+		echo "✅ SQL files generated successfully in $(WORKING_DIR)/$*/"; \
+		tar -czf "$(WORKING_DIR)/$*/sql_generation.tar.gz" \
+			-C "$(WORKING_DIR)/$*" \
+			HP_vs_MP.sql HP_vs_HP.sql HP_vs_ZP.sql log_sql_generation.yml; \
+		rm -f "$(WORKING_DIR)/$*/"HP_vs_{MP,HP,ZP}.sql; \
+	fi
+
+
+
+all-sql: \
+	exomiser-sql-semsim-phenio-default \
+	exomiser-sql-semsim-phenio-equivalent \
+	exomiser-sql-semsim-ols-cosinemegatron \
+	exomiser-sql-semsim-ols-cosinetextsmall
+
+# Import SQL files from sql_generation.tar.gz into H2 database
+# Usage: make import-h2-semsim-phenio-default H2_DB=/path/to/database.mv.db
+# Requires: H2 JDBC driver jar file and Java
+H2_DB ?= $(WORKING_DIR)/exomiser/current/2406_phenotype/2406_phenotype.mv.db
+H2_JAR ?= $(WORKING_DIR)/h2.jar
+H2_USER ?=
+H2_PASSWORD ?=
+
+import-h2-%: $(WORKING_DIR)/%/sql_generation.tar.gz
+	@echo "🔧 Importing SQL files from $< into H2 database"
+	@echo "   Root database (will copy): $(H2_DB)"
+	@if [ ! -f "$(H2_JAR)" ]; then \
+		echo "❌ Error: H2 JDBC driver not found at $(H2_JAR)"; \
+		echo "   Download with: curl -L -o $(H2_JAR) https://repo1.maven.org/maven2/com/h2database/h2/2.2.224/h2-2.2.224.jar"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(H2_DB)" ]; then \
+		echo "❌ Error: H2 database not found at $(H2_DB)"; \
+		echo "   Set H2_DB variable to point to your database file"; \
+		exit 1; \
+	fi
+	@cp $(H2_DB) $(WORKING_DIR)/$*/phenotype.mv.db
+	@# Extract SQL files to temporary directory
+	@mkdir -p $(WORKING_DIR)/$*/sql_unpacked
+	@tar -xzf $< -C $(WORKING_DIR)/$*/sql_unpacked
+	@echo "✅ Extracted SQL files"
+	@# TEMPORARY HACK: Fix reversed table names (MP_HP -> HP_MP, ZP_HP -> HP_ZP)
+	@echo "🔧 Fixing reversed table names in SQL files..."
+	@for sql_file in $(WORKING_DIR)/$*/sql_unpacked/*.sql; do \
+		sed -i.bak 's/EXOMISER\.MP_HP_MAPPINGS/EXOMISER.HP_MP_MAPPINGS/g' "$$sql_file"; \
+		sed -i.bak 's/EXOMISER\.ZP_HP_MAPPINGS/EXOMISER.HP_ZP_MAPPINGS/g' "$$sql_file"; \
+		rm -f "$${sql_file}.bak"; \
+	done
+	@echo "✅ Table names fixed"
+	@# IMPORTANT: H2 requires absolute paths in JDBC URL
+	@db_abs_path=$$(cd $(WORKING_DIR)/$* && pwd)/phenotype; \
+	jdbc_url="jdbc:h2:file:$$db_abs_path"; \
+	echo "   JDBC URL: $$jdbc_url"; \
+	echo "   Using credentials: user='sa', password='' (H2 default)"; \
+	\
+	for sql_file in $(WORKING_DIR)/$*/sql_unpacked/*.sql; do \
+		echo "📥 Importing $$(basename $$sql_file)..."; \
+		java -Xms128m -Xmx8192m -Dh2.bindAddress=127.0.0.1 \
+			-cp $(H2_JAR) org.h2.tools.RunScript \
+			-url "$$jdbc_url" \
+			-script "$$sql_file" \
+			-user "sa" \
+			-password ""; \
+		if [ $$? -eq 0 ]; then \
+			echo "   ✅ Successfully imported $$(basename $$sql_file)"; \
+		else \
+			echo "   ❌ Failed to import $$(basename $$sql_file)"; \
+			exit 1; \
+		fi; \
+	done
+	@echo "✅ All SQL files imported successfully"
+	@# Clean up temporary files (keep the tar.gz archive)
+	@rm -rf $(WORKING_DIR)/$*/sql_unpacked
+	@echo "🧹 Cleaned up temporary files (kept sql_generation.tar.gz)"
 
 # Clean working directory
 clean:
@@ -111,19 +193,55 @@ clean:
 help:
 	@echo "Phenotype Comparison Pipeline Makefile"
 	@echo ""
-	@echo "Targets:"
+	@echo "=== Setup Targets ==="
 	@echo "  download-ontologies        - Download all configured ontologies"
 	@echo "  prepare-dbs                - Prepare databases from downloaded ontologies"
 	@echo "  setup                      - Run setup only (downloads tools and data)"
-	@echo "  custom-phenio-<name>       - Run pipeline with custom PHENIO database"
-	@echo "  sql_<run-name>             - Generate Exomiser SQL from similarity results"
+	@echo ""
+	@echo "=== Pipeline Targets ==="
+	@echo "  semsim-phenio-<name>       - Run pipeline with custom PHENIO database"
+	@echo "  semsim-ols-cosinemegatron  - Download OLS cosine similarity data (nemotron)"
+	@echo "  semsim-ols-cosinetextsmall - Download OLS cosine similarity data (text-small)"
+	@echo ""
+	@echo "=== Exomiser Integration ==="
+	@echo "  exomiser-sql-<run-name>    - Generate SQL files from similarity results for H2 database import"
+	@echo "  import-h2-<run-name>       - Import SQL files from sql_generation.tar.gz into H2 database"
+	@echo "  all-sql                    - Generate SQL files for all runs"
+	@echo ""
+	@echo "=== Maintenance ==="
 	@echo "  clean                      - Clean up working directory"
 	@echo ""
-	@echo "Variables:"
+	@echo "=== Configuration Variables ==="
 	@echo "  WORKING_DIR       - Working directory (default: ./working)"
 	@echo "  RESNIK_THRESHOLD  - Min ancestor information content (default: 1.5)"
 	@echo "  RUN               - Command prefix (default: uv run)"
+	@echo "  THRESHOLD         - Minimum score threshold for filtering (default: 0.4)"
+	@echo "  BATCH_SIZE        - Number of rows per batch (default: 100000)"
+	@echo "  H2_DB             - Path to H2 database file for import"
+	@echo "                      (default: ./working/exomiser/current/2406_phenotype/2406_phenotype.mv.db)"
+	@echo "  H2_JAR            - Path to H2 JDBC driver jar (default: ./working/h2.jar)"
+	@echo "  H2_USER           - H2 database username (default: empty, no auth)"
+	@echo "  H2_PASSWORD       - H2 database password (default: empty)"
 	@echo ""
-	@echo "Examples:"
-	@echo "  make setup                                      # Setup tools and data"
-	@echo "  make clean                                      # Clean up working directory"
+	@echo "=== Examples ==="
+	@echo "  # Setup"
+	@echo "  make setup"
+	@echo ""
+	@echo "  # Generate SQL files for Exomiser"
+	@echo "  make exomiser-sql-semsim-phenio-default"
+	@echo "  make exomiser-sql-semsim-phenio-default THRESHOLD=0.7 BATCH_SIZE=50000"
+	@echo ""
+	@echo "  # Import SQL files into H2 database"
+	@echo "  # First, download H2 JDBC driver:"
+	@echo "  curl -L -o working/h2.jar https://repo1.maven.org/maven2/com/h2database/h2/2.2.224/h2-2.2.224.jar"
+	@echo ""
+	@echo "  # Then import (no authentication by default):"
+	@echo "  make import-h2-semsim-phenio-default"
+	@echo "  make import-h2-semsim-phenio-default H2_DB=/path/to/your/database.mv.db"
+	@echo ""
+	@echo "  # If your database has authentication:"
+	@echo "  make import-h2-semsim-phenio-default H2_USER=sa H2_PASSWORD=yourpass"
+	@echo ""
+	@echo "  # Clean up"
+	@echo "  make clean"
+	@echo ""
