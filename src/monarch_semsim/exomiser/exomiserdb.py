@@ -4,10 +4,11 @@ from pathlib import Path
 
 import polars as pl
 from tqdm import tqdm
+from curies import get_obo_converter
 
 info_log = log.getLogger("info")
 info_debug = log.getLogger("debug")
-
+converter = get_obo_converter()
 
 def semsim_to_exomisersql(
     input_file: Path,
@@ -58,8 +59,24 @@ def _get_score(data):
     else:
         return 0
 
+def _format_curie(id:str, check_prefix: str = None):
+    """format curie to exomiser database way
 
-def _format_row(mapping_id, data):
+    Args:
+        id (str): input id
+    """
+    curie = converter.compress(id, passthrough=True)
+    
+    if len(curie) > 10:
+        #info_debug.error(f"{curie} too long!")
+        return None
+    
+    if check_prefix and not curie.startswith(f"{check_prefix}:"):
+        return None
+    
+    return curie
+
+def _format_row(mapping_id, data, subject_prefix, object_prefix):
     """format row in a exomiser database way
 
     Args:
@@ -73,13 +90,26 @@ def _format_row(mapping_id, data):
     # Get score using centralized function
     score = _get_score(data)
 
-    # Handle optional ancestor_id
-    ancestor_id = data.get('ancestor_id', 'HP:0000000')
+    ancestor_id = _format_curie(data.get('ancestor_id', 'HP:0000000'))
+    subject_id = _format_curie(data.get('subject_id', 'HP:0000000'), check_prefix = subject_prefix)
+    object_id = _format_curie(data.get('object_id', 'HP:0000000'), check_prefix = object_prefix)
+    
+    if subject_id is None or object_id is None:
+        return None
+    
+    if subject_id == object_id:
+        return None
+    
     ancestor_label = data.get('ancestor_label', 'phenotype')
-    ancestor_id_first = ancestor_id.split(",")[0] if ancestor_id else ''
+
+    # Truncate labels to 144 characters to fit VARCHAR(255) schema constraint
+    MAX_LABEL_LENGTH = 144
+    subject_label = data['subject_label'].replace("'", "")[:MAX_LABEL_LENGTH]
+    object_label = data['object_label'].replace("'", "")[:MAX_LABEL_LENGTH]
+    ancestor_label_safe = ancestor_label.replace("'", "")[:MAX_LABEL_LENGTH]
 
     # TODO:Improve string escaping. Replace this code with parametrised query
-    return f"""({mapping_id}, '{data['subject_id']}', '{data['subject_label'].replace("'", "")}', '{data['object_id']}', '{data['object_label'].replace("'", "")}', {jaccard_similarity}, {ancestor_information_content}, {score}, '{ancestor_id_first}', '{ancestor_label.replace("'", "")}')"""  # noqa
+    return f"""({mapping_id}, '{subject_id}', '{subject_label}', '{object_id}', '{object_label}', {jaccard_similarity}, {ancestor_information_content}, {score}, '{ancestor_id}', '{ancestor_label_safe}')"""  # noqa
 
 
 def _prepare_rows(
@@ -104,16 +134,22 @@ def _prepare_rows(
     object_term = (
         f"{object_prefix}_HIT_TERM" if subject_prefix == object_prefix else f"{object_prefix}_TERM"
     )
-    sql += f"""INSERT INTO EXOMISER.{subject_prefix}_{object_prefix}_MAPPINGS
-(MAPPING_ID, {subject_prefix}_ID, {subject_prefix}_TERM, {object_id}, {object_term}, SIMJ, IC, SCORE, LCS_ID, LCS_TERM)
-VALUES"""
+
     rows = []
     for frame in input_data.iter_rows(named=True):
         # Only include rows that meet the threshold
         if _get_score(frame) >= threshold:
-            rows.append(_format_row(data=frame, mapping_id=mapping_id + len(rows)))
+            row = _format_row(data=frame, mapping_id=mapping_id + len(rows), subject_prefix=subject_prefix, object_prefix=object_prefix)
+            if row:
+                rows.append(row)
 
-    sql += ",\n".join(rows) + ";"
+    # Only generate INSERT statement if there are rows to insert
+    if rows:
+        sql += f"""INSERT INTO EXOMISER.{subject_prefix}_{object_prefix}_MAPPINGS
+(MAPPING_ID, {subject_prefix}_ID, {subject_prefix}_TERM, {object_id}, {object_term}, SIMJ, IC, SCORE, LCS_ID, LCS_TERM)
+VALUES"""
+        sql += ",\n".join(rows) + ";"
+
     return sql
 
 
