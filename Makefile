@@ -1,14 +1,20 @@
 .PHONY: help
 
+
+#https://github.com/exomiser/Exomiser/blob/master/exomiser-data-phenotype/src/main/resources/db/migration/h2/V3.5__Insert_hp_hp_mappings.sql 
+
 # Default values from Jenkinsfile
 WORKING_DIR ?= ./working
-RESNIK_THRESHOLD ?= 1.5
 RUN ?= uv run
-THRESHOLD ?= 0.4
-BATCH_SIZE ?= 100000
+SHELL := /bin/bash -eu -o pipefail
+
+download-phenotype-db:
+	wget "https://g-879a9f.f5dc97.75bc.dn.glob.us/data/2508_phenotype.zip" -O "$(WORKING_DIR)/exomiser/current/2508_phenotype.zip"
+	unzip "$(WORKING_DIR)/exomiser/current/2508_phenotype.zip" -d "$(WORKING_DIR)/exomiser/current/"
 
 download-ontologies: prepare-phenio-default prepare-phenio-equivalent ontologies/phenio-equivalent.owl
 
+# phenodigm threshold might be random? its not betwen 0-1. NO THRESHOLD!
 prepare-phenio-default:
 	mkdir -p tmp ontologies
 	wget https://github.com/monarch-initiative/phenio/releases/download/v2025-10-12/phenio.owl.gz -O tmp/phenio.owl.gz
@@ -42,6 +48,8 @@ setup:
 		--resnik-threshold $(RESNIK_THRESHOLD) \
 		--test-mode
 
+RESNIK_THRESHOLD ?= 1.5
+
 # Run with custom PHENIO database
 semsim-phenio-%:
 	$(RUN) run_pipeline.py \
@@ -50,15 +58,24 @@ semsim-phenio-%:
 		--resnik-threshold $(RESNIK_THRESHOLD) \
 		--custom-phenio ontologies/phenio-$*.db \
 		--comparison all
-	tar -czf "$(WORKING_DIR)/$*/semsim.tar.gz" \
-			-C "$(WORKING_DIR)/$*" \
+	# TODO The next line exists so I can test changes to this goal w/o rerunning semsim pipeline
+	# @tar -xzf "$(WORKING_DIR)/$@/semsim.tar.gz" -C "$(WORKING_DIR)/$@"
+	@echo "🔧 Subsetting TSV files to key columns..."
+	@for pair in HP_vs_MP HP_vs_HP HP_vs_ZP; do \
+		$(RUN) python3 -c "import polars as pl; df = pl.read_csv('$(WORKING_DIR)/$@/$${pair}.tsv', separator='\t'); df_subset = df.select(['subject_id', 'object_id', 'ancestor_id', 'ancestor_information_content']).unique(); df_subset.write_csv('$(WORKING_DIR)/$@/$${pair}_subset.tsv', separator='\t')"; \
+	done
+	@echo "✅ Subset files created: HP_vs_*_subset.tsv"
+	tar -czf "$(WORKING_DIR)/$@/semsim.tar.gz" \
+			-C "$(WORKING_DIR)/$@" \
 			HP_vs_MP.tsv HP_vs_HP.tsv HP_vs_ZP.tsv log_sql_generation.yml
-	@if [ -f "$(WORKING_DIR)/$*/semsim.tar.gz" ]; then \
-		rm -f "$(WORKING_DIR)/$*/"HP_vs_{MP,HP,ZP}.tsv; \
+	@if [ -f "$(WORKING_DIR)/$@/semsim.tar.gz" ]; then \
+		rm -f "$(WORKING_DIR)/$@/"HP_vs_{MP,HP,ZP}.tsv; \
 	else \
 		echo "❌ Failed to create semsim.tar.gz"; \
 		exit 1; \
 	fi
+
+ICSCORE_SOURCE = semsim-phenio-default
 
 semsim-ols-cosinemegatron:
 	mkdir -p $(WORKING_DIR)/semsim-ols-cosinemegatron
@@ -71,6 +88,26 @@ semsim-ols-cosinemegatron:
 	wget https://ftp.ebi.ac.uk/pub/databases/spot/ols_embeddings/semsim/hp_hp__llama-embed-nemotron-8b.tsv.gz -O $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_hp__llama-embed-nemotron-8b.tsv.gz
 	gunzip $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_hp__llama-embed-nemotron-8b.tsv.gz
 	mv $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_hp__llama-embed-nemotron-8b.tsv $(WORKING_DIR)/$@/HP_vs_HP.tsv
+	# TODO The next line exists so I can test changes to this goal w/o rerunning semsim pipeline
+	#@tar -xzf "$(WORKING_DIR)/$@/semsim.tar.gz" -C "$(WORKING_DIR)/$@"
+	@echo "🔧 Enriching TSV files with ancestor information from $(ICSCORE_SOURCE)..."
+	@for pair in HP_vs_ZP; do \
+		if [ -f "$(WORKING_DIR)/$(ICSCORE_SOURCE)/$${pair}_subset.tsv" ]; then \
+			$(RUN) python3 -c "import polars as pl; \
+				df_main = pl.read_csv('$(WORKING_DIR)/$@/$${pair}.tsv', separator='\t'); \
+				df_subset = pl.read_csv('$(WORKING_DIR)/$(ICSCORE_SOURCE)/$${pair}_subset.tsv', separator='\t'); \
+				df_enriched = df_main.join(df_subset, on=['subject_id', 'object_id'], how='left'); \
+				df_enriched = df_enriched.with_columns([ \
+					pl.col('ancestor_id').fill_null('HP:0000000'), \
+					pl.col('ancestor_information_content').fill_null(1) \
+				]); \
+				df_enriched.write_csv('$(WORKING_DIR)/$@/$${pair}.tsv', separator='\t')"; \
+			echo "   ✅ Enriched $${pair}.tsv"; \
+		else \
+			echo "   ⚠️  Warning: $(WORKING_DIR)/$(ICSCORE_SOURCE)/$${pair}_subset.tsv not found, skipping"; \
+		fi; \
+	done
+	@echo "✅ Enrichment complete"
 	tar -czf "$(WORKING_DIR)/semsim-ols-cosinemegatron/semsim.tar.gz" \
 			-C "$(WORKING_DIR)/semsim-ols-cosinemegatron" \
 			HP_vs_MP.tsv HP_vs_HP.tsv HP_vs_ZP.tsv log_sql_generation.yml
@@ -92,6 +129,24 @@ semsim-ols-cosinetextsmall:
 	wget https://ftp.ebi.ac.uk/pub/databases/spot/ols_embeddings/semsim_text-embedding-3-small/hp_zp__text-embedding-3-small.tsv.gz -O $(WORKING_DIR)/semsim-ols-cosinetextsmall/hp_zp__text-embedding-3-small.tsv.gz
 	gunzip $(WORKING_DIR)/semsim-ols-cosinetextsmall/hp_zp__text-embedding-3-small.tsv.gz
 	mv $(WORKING_DIR)/semsim-ols-cosinetextsmall/hp_zp__text-embedding-3-small.tsv $(WORKING_DIR)/$@/HP_vs_ZP.tsv
+	@echo "🔧 Enriching TSV files with ancestor information from $(ICSCORE_SOURCE)..."
+	@for pair in HP_vs_MP HP_vs_HP HP_vs_ZP; do \
+		if [ -f "$(WORKING_DIR)/$(ICSCORE_SOURCE)/$${pair}_subset.tsv" ]; then \
+			$(RUN) python3 -c "import polars as pl; \
+				df_main = pl.read_csv('$(WORKING_DIR)/$@/$${pair}.tsv', separator='\t'); \
+				df_subset = pl.read_csv('$(WORKING_DIR)/$(ICSCORE_SOURCE)/$${pair}_subset.tsv', separator='\t'); \
+				df_enriched = df_main.join(df_subset, on=['subject_id', 'object_id'], how='left'); \
+				df_enriched = df_enriched.with_columns([ \
+					pl.col('ancestor_id').fill_null('HP:0000000'), \
+					pl.col('ancestor_information_content').fill_null(1) \
+				]); \
+				df_enriched.write_csv('$(WORKING_DIR)/$@/$${pair}.tsv', separator='\t')"; \
+			echo "   ✅ Enriched $${pair}.tsv"; \
+		else \
+			echo "   ⚠️  Warning: $(WORKING_DIR)/$(ICSCORE_SOURCE)/$${pair}_subset.tsv not found, skipping"; \
+		fi; \
+	done
+	@echo "✅ Enrichment complete"
 	tar -czf "$(WORKING_DIR)/semsim-ols-cosinetextsmall/semsim.tar.gz" \
 			-C "$(WORKING_DIR)/semsim-ols-cosinetextsmall" \
 			HP_vs_MP.tsv HP_vs_HP.tsv HP_vs_ZP.tsv log_sql_generation.yml
@@ -112,7 +167,28 @@ all-semsim: \
 # Generate SQL files from semantic similarity results
 # Creates: working/<run-name>/HP_vs_*_semsimian_phenio_exomiser.sql
 # Usage: make exomiser-sql-semsim-phenio-default
-exomiser-sql-%: $(WORKING_DIR)/%/semsim.tar.gz
+
+THRESHOLD ?= 0.85
+THRESHOLD_COLUMN ?= default
+BATCH_SIZE ?= 100000
+SCORE=phenodigm_score
+COMPUTE_PHENODIGM=true
+
+tmp/hp.owl: 
+	wget http://purl.obolibrary.org/obo/hp.owl -O tmp/hp.owl
+
+tmp/hp-labels.tsv: tmp/hp.owl
+	robot export -i tmp/hp.owl -f tsv --header "ID|LABEL" --export $@
+	grep "^HP:" $@ > $@.tmp && mv $@.tmp $@
+
+tmp/hpoa.tsv:
+	wget http://purl.obolibrary.org/obo/hp/hpoa/phenotype.hpoa -O $@
+
+tmp/hp-ic.tsv: tmp/hpoa.tsv
+	$(RUN) runoak -g tmp/hpoa.tsv -G hpoa -i sqlite:obo:hp information-content -p i --use-associations .all > $@
+	tail -n +2 "$@" | grep "^HP:" > "$@.tmp" && mv "$@.tmp" "$@"
+
+exomiser-sql-%: $(WORKING_DIR)/%/semsim.tar.gz tmp/hp-labels.tsv tmp/hp-ic.tsv
 	@if [ -f "$(WORKING_DIR)/$*/sql.tar.gz" ]; then \
 		echo "⚠️  Skipping: $(WORKING_DIR)/$*/sql.tar.gz already exists."; \
 	else \
@@ -127,17 +203,25 @@ exomiser-sql-%: $(WORKING_DIR)/%/semsim.tar.gz
 			object=$${pair##*_vs_}; \
 			$(RUN) monarch-semsim semsim-to-exomisersql \
 				--input-file "$(WORKING_DIR)/$*/$${pair}.tsv" \
-				--subject-prefix "$$object" \
-				--object-prefix "$$subject" \
+				--subject-prefix "$$subject" \
+				--object-prefix "$$object" \
 				--threshold "$(THRESHOLD)" \
+				--threshold-column "$(THRESHOLD_COLUMN)" \
+				--hp-ic-list "tmp/hp-ic.tsv" \
+				--hp-label-list "tmp/hp-labels.tsv" \
+				--score "$(SCORE)" \
+				--compute-phenodigm "$(COMPUTE_PHENODIGM)" \
 				--batch-size "$(BATCH_SIZE)" \
-				--output "$(WORKING_DIR)/$*/$${pair}.sql"; \
+				--format psv \
+				--output "$(WORKING_DIR)/$*/$${pair}.txt"; \
 		done; \
 		\
 		logfile="$(WORKING_DIR)/$*/log_sql_generation.yml"; \
 		{ \
 			echo "date: $$(date)"; \
 			echo "semsim_threshold: $(THRESHOLD)"; \
+			echo "compute_phenodigm: $(COMPUTE_PHENODIGM)"; \
+			echo "score: $(SCORE)"; \
 			echo "resnik_threshold: $(RESNIK_THRESHOLD)"; \
 			echo "flavour: $*"; \
 			[ -f "$(WORKING_DIR)/$*/phenio_version" ] && echo "phenio: $$(cat $(WORKING_DIR)/$*/phenio_version)"; \
@@ -148,115 +232,114 @@ exomiser-sql-%: $(WORKING_DIR)/%/semsim.tar.gz
 		\
 		echo "✅ SQL files generated successfully in $(WORKING_DIR)/$*/"; \
 		echo "📊 Checking if SQL files where correctly created..."; \
-		if 	[ -f "$(WORKING_DIR)/$*/HP_vs_MP.sql" ] && \
-			[ -f "$(WORKING_DIR)/$*/HP_vs_HP.sql" ] && \
-			[ -f "$(WORKING_DIR)/$*/HP_vs_ZP.sql" ] && \
+		if 	[ -f "$(WORKING_DIR)/$*/HP_vs_MP.txt" ] && \
+			[ -f "$(WORKING_DIR)/$*/HP_vs_HP.txt" ] && \
+			[ -f "$(WORKING_DIR)/$*/HP_vs_ZP.txt" ] && \
 			[ -f "$(WORKING_DIR)/$*/log_sql_generation.yml" ]; then \
 			tar -czf "$(WORKING_DIR)/$*/sql.tar.gz" \
 				-C "$(WORKING_DIR)/$*" \
-				HP_vs_MP.sql HP_vs_HP.sql HP_vs_ZP.sql log_sql_generation.yml; \
-			rm -f "$(WORKING_DIR)/$*/"HP_vs_{MP,HP,ZP}.{sql,tsv}; \
+				HP_vs_MP.txt HP_vs_HP.txt HP_vs_ZP.txt log_sql_generation.yml; \
+			rm -f "$(WORKING_DIR)/$*/"HP_vs_{MP,HP,ZP}.{txt,tsv}; \
 		else \
 			echo "❌ Error: One or more SQL files were not created successfully."; \
 			exit 1; \
 		fi; \
 	fi
 
-all-sql: \
-	exomiser-sql-semsim-phenio-default \
-	exomiser-sql-semsim-phenio-equivalent \
-	exomiser-sql-semsim-ols-cosinemegatron \
-	exomiser-sql-semsim-ols-cosinetextsmall
+all-sql:
+	rm -f $(WORKING_DIR)/semsim-phenio-default/sql.tar.gz
+	make exomiser-sql-semsim-phenio-default THRESHOLD=0.7 BATCH_SIZE=100000 SCORE=phenodigm_score COMPUTE_PHENODIGM=false
+	rm -f $(WORKING_DIR)/semsim-phenio-equivalent/sql.tar.gz
+	make exomiser-sql-semsim-phenio-equivalent THRESHOLD=0.7 BATCH_SIZE=100000 SCORE=phenodigm_score COMPUTE_PHENODIGM=false
+	rm -f $(WORKING_DIR)/semsim-ols-cosinemegatron/sql.tar.gz
+	make exomiser-sql-semsim-ols-cosinemegatron THRESHOLD=0.7 BATCH_SIZE=100000 SCORE=cosine_similarity COMPUTE_PHENODIGM=true
+	rm -f $(WORKING_DIR)/semsim-ols-cosinetextsmall/sql.tar.gz
+	make exomiser-sql-semsim-ols-cosinetextsmall THRESHOLD=0.7 BATCH_SIZE=100000 SCORE=cosine_similarity COMPUTE_PHENODIGM=true
 
 # Import SQL files from sql.tar.gz into H2 database
 # Usage: make import-h2-semsim-phenio-default H2_DB=/path/to/database.mv.db
 # Requires: H2 JDBC driver jar file and Java
-H2_DB ?= $(WORKING_DIR)/exomiser/current/2406_phenotype/2406_phenotype.mv.db
+H2_DB ?= $(WORKING_DIR)/exomiser/current/2508_phenotype/2508_phenotype.mv.db
 H2_JAR ?= $(WORKING_DIR)/h2.jar
 H2_USER ?=
 H2_PASSWORD ?=
-
 h2-%: $(WORKING_DIR)/%/sql.tar.gz
 	@echo "🔧 Importing SQL files from $< into H2 database"
+
 	@if [ -f "$(WORKING_DIR)/$*/phenotype.mv.db" ]; then \
 		echo "❌ Error: $(WORKING_DIR)/$*/phenotype.mv.db already exists. Please delete manually."; \
 		exit 1; \
 	fi
+
 	@echo "   Root database (will copy): $(H2_DB)"
+
 	@if [ ! -f "$(H2_JAR)" ]; then \
 		echo "❌ Error: H2 JDBC driver not found at $(H2_JAR)"; \
 		echo "   Download with: curl -L -o $(H2_JAR) https://repo1.maven.org/maven2/com/h2database/h2/2.2.224/h2-2.2.224.jar"; \
 		exit 1; \
 	fi
+
 	@if [ ! -f "$(H2_DB)" ]; then \
 		echo "❌ Error: H2 database not found at $(H2_DB)"; \
 		echo "   Set H2_DB variable to point to your database file"; \
 		exit 1; \
 	fi
-	@echo "🔧 Copying exomiser database from $(H2_DB) to $(WORKING_DIR)/$*/phenotype.mv.db..."
-	@cp $(H2_DB) $(WORKING_DIR)/$*/phenotype.mv.db
-	@echo "✅ Copying exomiser database from $(H2_DB) to $(WORKING_DIR)/$*/phenotype.mv.db..."
-	@# Extract SQL files to temporary directory
-	@mkdir -p $(WORKING_DIR)/$*/sql_unpacked
-	@tar -xzf $< -C $(WORKING_DIR)/$*/sql_unpacked
+
+	@echo "🔧 Copying exomiser database..."
+	@cp "$(H2_DB)" "$(WORKING_DIR)/$*/phenotype.mv.db"
+	@echo "✅ Copied database."
+
+	@mkdir -p "$(WORKING_DIR)/$*/sql_unpacked"
+	@tar -xzf "$<" -C "$(WORKING_DIR)/$*/sql_unpacked"
 	@echo "✅ Extracted SQL files"
-	@# TEMPORARY HACK: Fix reversed table names (MP_HP -> HP_MP, ZP_HP -> HP_ZP)
-	@# Only process first 3 lines (TRUNCATE and INSERT INTO statements) for speed
-	@echo "🔧 Fixing reversed table names in SQL files..."
-	@for sql_file in $(WORKING_DIR)/$*/sql_unpacked/*.sql; do \
-		sed -i.bak '1,3s/EXOMISER\.MP_HP_MAPPINGS/EXOMISER.HP_MP_MAPPINGS/g' "$$sql_file"; \
-		sed -i.bak '1,3s/EXOMISER\.ZP_HP_MAPPINGS/EXOMISER.HP_ZP_MAPPINGS/g' "$$sql_file"; \
-		rm -f "$${sql_file}.bak"; \
-	done
-	@echo "✅ Table names fixed"
-	@# IMPORTANT: H2 requires absolute paths in JDBC URL
-	@db_abs_path=$$(cd $(WORKING_DIR)/$* && pwd)/phenotype; \
+
+	@cp "scripts/h2-exomiser-load.sql" "$(WORKING_DIR)/$*/h2-exomiser-load.sql"
+
+	@sql_data_dir=$$(cd "$(WORKING_DIR)/$*" && pwd)/sql_unpacked; \
+	sed "s|\$${import.path}|$$sql_data_dir|g" \
+	    "$(WORKING_DIR)/$*/h2-exomiser-load.sql" \
+	    > "$(WORKING_DIR)/$*/h2-exomiser-load.sql.tmp" && \
+	mv "$(WORKING_DIR)/$*/h2-exomiser-load.sql.tmp" "$(WORKING_DIR)/$*/h2-exomiser-load.sql"
+
+	@echo "✅ Updated SQL file with import path"
+
+	@db_abs_path=$$(cd "$(WORKING_DIR)/$*" && pwd)/phenotype; \
 	jdbc_url="jdbc:h2:file:$$db_abs_path"; \
 	echo "   JDBC URL: $$jdbc_url"; \
-	echo "   Using credentials: user='sa', password='' (H2 default)"; \
-	\
-	for sql_file in $(WORKING_DIR)/$*/sql_unpacked/*.sql; do \
-		echo "📥 Importing $$(basename $$sql_file)..."; \
-		java -Xms128m -Xmx8192m -Dh2.bindAddress=127.0.0.1 \
-			-cp $(H2_JAR) org.h2.tools.RunScript \
-			-url "$$jdbc_url" \
-			-script "$$sql_file" \
-			-user "sa" \
-			-password ""; \
-		if [ $$? -eq 0 ]; then \
-			echo "   ✅ Successfully imported $$(basename $$sql_file)"; \
-		else \
-			echo "   ❌ Failed to import $$(basename $$sql_file)"; \
-			exit 1; \
-		fi; \
-	done
-	@echo "✅ All SQL files imported successfully"
-	@# Compact database to reclaim space from TRUNCATE and optimize layout
-	@echo "🔧 Compacting database..."
-	@db_abs_path=$$(cd $(WORKING_DIR)/$* && pwd)/phenotype; \
-	jdbc_url="jdbc:h2:file:$$db_abs_path"; \
-	java -Xms128m -Xmx8192m -Dh2.bindAddress=127.0.0.1 \
-		-cp $(H2_JAR) org.h2.tools.Shell \
-		-url "$$jdbc_url" \
+	java -Xms512m -Xmx16384m \
+		-cp "$(H2_JAR)" org.h2.tools.RunScript \
+		-url "$$jdbc_url;LOCK_MODE=0;CACHE_SIZE=65536;MODE=POSTGRESQL" \
+		-script "$(WORKING_DIR)/$*/h2-exomiser-load.sql" \
 		-user "sa" \
-		-password "" \
-		-sql "SHUTDOWN COMPACT;" > /dev/null 2>&1; \
-	if [ $$? -eq 0 ]; then \
-		echo "✅ Database compacted successfully"; \
+		-password ""; \
+	status=$$?; \
+	if [ $$status -eq 0 ]; then \
+		echo "   ✅ Successfully imported $(WORKING_DIR)/$*/h2-exomiser-load.sql"; \
+		echo "🧹 Cleaning up temporary H2 files..."; \
+		rm -rf "$(WORKING_DIR)/$*/sql_unpacked"; \
+		rm -f "$(WORKING_DIR)/$*/phenotype.trace.db"; \
+		rm -f "$(WORKING_DIR)/$*/phenotype.trace.db.old"; \
+		rm -f "$(WORKING_DIR)/$*/phenotype.mv.db.trace.db"; \
+		echo "✅ Cleanup complete"; \
 	else \
-		echo "⚠️  Warning: Compact operation failed (non-fatal)"; \
+		echo "   ❌ Failed to import $(WORKING_DIR)/$*/h2-exomiser-load.sql"; \
+		exit $$status; \
 	fi
-	@echo "📊 Final database size:"
-	@ls -lh $(WORKING_DIR)/$*/phenotype.mv.db
-	@# Clean up temporary files (keep the tar.gz archive)
-	@rm -rf $(WORKING_DIR)/$*/sql_unpacked
-	@echo "🧹 Cleaned up temporary files (kept sql.tar.gz)"
 
-all-h2: \
-	h2-semsim-phenio-default \
-	h2-semsim-phenio-equivalent \
-	h2-semsim-ols-cosinemegatron \
-	h2-semsim-ols-cosinetextsmall
+
+all-h2:
+	rm -f $(WORKING_DIR)/semsim-phenio-default/phenotype.mv.db
+	make h2-semsim-phenio-default
+	# 39081681
+	rm -f $(WORKING_DIR)/semsim-phenio-equivalent/phenotype.mv.db
+	make h2-semsim-phenio-equivalent
+	# 46972740
+	rm -f $(WORKING_DIR)/semsim-ols-cosinemegatron/phenotype.mv.db
+	make h2-semsim-ols-cosinemegatron
+	# 54675
+	rm -f $(WORKING_DIR)/semsim-ols-cosinetextsmall/phenotype.mv.db
+	make h2-semsim-ols-cosinetextsmall
+	# 941500
 
 # Clean working directory
 clean:
