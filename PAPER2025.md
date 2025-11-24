@@ -13,5 +13,6 @@
 Size comparisons
 
 Version | HP_HP | HP_MP | HP_ZP  
+------- | ----  | ----- | -----
 phenio-default-0.4-phenodigm_score-false | 11,646,633 | 3,369,627 | 4,332,483
 2508_phenotype | 36,738,237 | 95,600,877 | 98,194,669
