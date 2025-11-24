@@ -229,6 +229,7 @@ exomiser-sql-%: $(WORKING_DIR)/%/semsim.tar.gz tmp/hp-labels.tsv tmp/hp-ic.tsv
 			[ -f "$(WORKING_DIR)/$*/mp_version" ] && echo "mp: $$(cat $(WORKING_DIR)/$*/mp_version)"; \
 			[ -f "$(WORKING_DIR)/$*/zp_version" ] && echo "zp: $$(cat $(WORKING_DIR)/$*/zp_version)"; \
 		} > "$$logfile"; \
+		echo "$*-$(THRESHOLD)-$(SCORE)-$(COMPUTE_PHENODIGM)" > $(WORKING_DIR)/$*/run_config.txt; \
 		\
 		echo "✅ SQL files generated successfully in $(WORKING_DIR)/$*/"; \
 		echo "📊 Checking if SQL files where correctly created..."; \
@@ -240,25 +241,16 @@ exomiser-sql-%: $(WORKING_DIR)/%/semsim.tar.gz tmp/hp-labels.tsv tmp/hp-ic.tsv
 				-C "$(WORKING_DIR)/$*" \
 				HP_vs_MP.txt HP_vs_HP.txt HP_vs_ZP.txt log_sql_generation.yml; \
 			rm -f "$(WORKING_DIR)/$*/"HP_vs_{MP,HP,ZP}.{txt,tsv}; \
+			rm -f "$(WORKING_DIR)/$*/log_sql_generation.yml"; \
 		else \
 			echo "❌ Error: One or more SQL files were not created successfully."; \
 			exit 1; \
 		fi; \
 	fi
 
-all-sql:
-	rm -f $(WORKING_DIR)/semsim-phenio-default/sql.tar.gz
-	make exomiser-sql-semsim-phenio-default THRESHOLD=0.7 BATCH_SIZE=100000 SCORE=phenodigm_score COMPUTE_PHENODIGM=false
-	rm -f $(WORKING_DIR)/semsim-phenio-equivalent/sql.tar.gz
-	make exomiser-sql-semsim-phenio-equivalent THRESHOLD=0.7 BATCH_SIZE=100000 SCORE=phenodigm_score COMPUTE_PHENODIGM=false
-	rm -f $(WORKING_DIR)/semsim-ols-cosinemegatron/sql.tar.gz
-	make exomiser-sql-semsim-ols-cosinemegatron THRESHOLD=0.7 BATCH_SIZE=100000 SCORE=cosine_similarity COMPUTE_PHENODIGM=true
-	rm -f $(WORKING_DIR)/semsim-ols-cosinetextsmall/sql.tar.gz
-	make exomiser-sql-semsim-ols-cosinetextsmall THRESHOLD=0.7 BATCH_SIZE=100000 SCORE=cosine_similarity COMPUTE_PHENODIGM=true
-
 # Import SQL files from sql.tar.gz into H2 database
 # Usage: make import-h2-semsim-phenio-default H2_DB=/path/to/database.mv.db
-# Requires: H2 JDBC driver jar file and Java
+# Requires: H2 JDBC driver jar file and Java 
 H2_DB ?= $(WORKING_DIR)/exomiser/current/2508_phenotype/2508_phenotype.mv.db
 H2_JAR ?= $(WORKING_DIR)/h2.jar
 H2_USER ?=
@@ -327,19 +319,50 @@ h2-%: $(WORKING_DIR)/%/sql.tar.gz
 	fi
 
 
-all-h2:
+old-h2:
+	rm -f $(WORKING_DIR)/semsim-phenio-default/sql.tar.gz
 	rm -f $(WORKING_DIR)/semsim-phenio-default/phenotype.mv.db
+	make exomiser-sql-semsim-phenio-default THRESHOLD=0.4 BATCH_SIZE=100000 SCORE=phenodigm_score COMPUTE_PHENODIGM=false THRESHOLD_COLUMN=jaccard_similarity
 	make h2-semsim-phenio-default
-	# 39081681
+	gzip -k $(WORKING_DIR)/semsim-phenio-default/phenotype.mv.db
+	mv $(WORKING_DIR)/semsim-phenio-default/phenotype.mv.db.gz $(WORKING_DIR)/semsim-phenio-default/phenotype-$$(tr -d '\n' < $(WORKING_DIR)/semsim-phenio-default/run_config.txt).mv.db.gz
+	
 	rm -f $(WORKING_DIR)/semsim-phenio-equivalent/phenotype.mv.db
+	rm -f $(WORKING_DIR)/semsim-phenio-equivalent/sql.tar.gz
+	make exomiser-sql-semsim-phenio-equivalent THRESHOLD=0.4 BATCH_SIZE=100000 SCORE=phenodigm_score COMPUTE_PHENODIGM=false THRESHOLD_COLUMN=jaccard_similarity
 	make h2-semsim-phenio-equivalent
-	# 46972740
+	gzip -k $(WORKING_DIR)/semsim-phenio-equivalent/phenotype.mv.db
+	mv $(WORKING_DIR)/semsim-phenio-equivalent/phenotype.mv.db.gz $(WORKING_DIR)/semsim-phenio-equivalent/phenotype-$$(tr -d '\n' < $(WORKING_DIR)/semsim-phenio-equivalent/run_config.txt).mv.db.gz
+
+all-h2:
+	rm -f $(WORKING_DIR)/semsim-ols-cosinemegatron/sql.tar.gz
 	rm -f $(WORKING_DIR)/semsim-ols-cosinemegatron/phenotype.mv.db
+	make exomiser-sql-semsim-ols-cosinemegatron THRESHOLD=0.4 BATCH_SIZE=100000 SCORE=cosine_similarity COMPUTE_PHENODIGM=true
 	make h2-semsim-ols-cosinemegatron
-	# 54675
+	gzip -k $(WORKING_DIR)/semsim-ols-cosinemegatron/phenotype.mv.db
+	mv $(WORKING_DIR)/semsim-ols-cosinemegatron/phenotype.mv.db.gz $(WORKING_DIR)/semsim-ols-cosinemegatron/phenotype-$$(tr -d '\n' < $(WORKING_DIR)/semsim-ols-cosinemegatron/run_config.txt).mv.db.gz
+	
+	rm -f $(WORKING_DIR)/semsim-ols-cosinetextsmall/sql.tar.gz
 	rm -f $(WORKING_DIR)/semsim-ols-cosinetextsmall/phenotype.mv.db
+	make exomiser-sql-semsim-ols-cosinetextsmall THRESHOLD=0.4 BATCH_SIZE=100000 SCORE=cosine_similarity COMPUTE_PHENODIGM=true
 	make h2-semsim-ols-cosinetextsmall
-	# 941500
+	gzip -k $(WORKING_DIR)/semsim-ols-cosinetextsmall/phenotype.mv.db
+	mv $(WORKING_DIR)/semsim-ols-cosinetextsmall/phenotype.mv.db.gz $(WORKING_DIR)/semsim-ols-cosinetextsmall/phenotype-$$(tr -d '\n' < $(WORKING_DIR)/semsim-ols-cosinetextsmall/run_config.txt).mv.db.gz
+
+unfiltered-h2:
+	rm -f $(WORKING_DIR)/semsim-phenio-default/sql.tar.gz
+	rm -f $(WORKING_DIR)/semsim-phenio-default/phenotype.mv.db
+	make exomiser-sql-semsim-phenio-default THRESHOLD=0.0 BATCH_SIZE=100000 SCORE=phenodigm_score COMPUTE_PHENODIGM=false THRESHOLD_COLUMN=jaccard_similarity
+	make h2-semsim-phenio-default
+	gzip -k $(WORKING_DIR)/semsim-phenio-default/phenotype.mv.db
+	mv $(WORKING_DIR)/semsim-phenio-default/phenotype.mv.db.gz $(WORKING_DIR)/semsim-phenio-default/phenotype-$$(tr -d '\n' < $(WORKING_DIR)/semsim-phenio-default/run_config.txt).mv.db.gz
+
+cp-h2:
+	@sh -c 'set -e; \
+		files=$$(ls $(WORKING_DIR)/*/phenotype-*.mv.db.gz); \
+		mv -f $$files "$$HOME/Dropbox/semanticly_share/exomiser-dbs/"; \
+		echo "Copied: $$files"; \
+	'
 
 # Clean working directory
 clean:
