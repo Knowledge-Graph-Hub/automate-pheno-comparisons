@@ -77,17 +77,17 @@ semsim-phenio-%:
 
 ICSCORE_SOURCE = semsim-phenio-default
 
-semsim-ols-cosinemegatron:
-	mkdir -p $(WORKING_DIR)/semsim-ols-cosinemegatron
-	wget https://ftp.ebi.ac.uk/pub/databases/spot/ols_embeddings/semsim/hp_zp__llama-embed-nemotron-8b.tsv.gz -O $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_zp__llama-embed-nemotron-8b.tsv.gz
-	gunzip $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_zp__llama-embed-nemotron-8b.tsv.gz
-	mv $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_zp__llama-embed-nemotron-8b.tsv $(WORKING_DIR)/$@/HP_vs_ZP.tsv
-	wget https://ftp.ebi.ac.uk/pub/databases/spot/ols_embeddings/semsim/hp_mp__llama-embed-nemotron-8b.tsv.gz -O $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_mp__llama-embed-nemotron-8b.tsv.gz
-	gunzip $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_mp__llama-embed-nemotron-8b.tsv.gz
-	mv $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_mp__llama-embed-nemotron-8b.tsv $(WORKING_DIR)/$@/HP_vs_MP.tsv
-	wget https://ftp.ebi.ac.uk/pub/databases/spot/ols_embeddings/semsim/hp_hp__llama-embed-nemotron-8b.tsv.gz -O $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_hp__llama-embed-nemotron-8b.tsv.gz
-	gunzip $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_hp__llama-embed-nemotron-8b.tsv.gz
-	mv $(WORKING_DIR)/semsim-ols-cosinemegatron/hp_hp__llama-embed-nemotron-8b.tsv $(WORKING_DIR)/$@/HP_vs_HP.tsv
+semsim-ols-cosinenemotron8b:
+	mkdir -p $(WORKING_DIR)/semsim-ols-cosinenemotron8b
+	wget https://ftp.ebi.ac.uk/pub/databases/spot/ols_embeddings/semsim/hp_zp__llama-embed-nemotron-8b.tsv.gz -O $(WORKING_DIR)/semsim-ols-cosinenemotron8b/hp_zp__llama-embed-nemotron-8b.tsv.gz
+	gunzip $(WORKING_DIR)/semsim-ols-cosinenemotron8b/hp_zp__llama-embed-nemotron-8b.tsv.gz
+	mv $(WORKING_DIR)/semsim-ols-cosinenemotron8b/hp_zp__llama-embed-nemotron-8b.tsv $(WORKING_DIR)/$@/HP_vs_ZP.tsv
+	wget https://ftp.ebi.ac.uk/pub/databases/spot/ols_embeddings/semsim/hp_mp__llama-embed-nemotron-8b.tsv.gz -O $(WORKING_DIR)/semsim-ols-cosinenemotron8b/hp_mp__llama-embed-nemotron-8b.tsv.gz
+	gunzip $(WORKING_DIR)/semsim-ols-cosinenemotron8b/hp_mp__llama-embed-nemotron-8b.tsv.gz
+	mv $(WORKING_DIR)/semsim-ols-cosinenemotron8b/hp_mp__llama-embed-nemotron-8b.tsv $(WORKING_DIR)/$@/HP_vs_MP.tsv
+	wget https://ftp.ebi.ac.uk/pub/databases/spot/ols_embeddings/semsim/hp_hp__llama-embed-nemotron-8b.tsv.gz -O $(WORKING_DIR)/semsim-ols-cosinenemotron8b/hp_hp__llama-embed-nemotron-8b.tsv.gz
+	gunzip $(WORKING_DIR)/semsim-ols-cosinenemotron8b/hp_hp__llama-embed-nemotron-8b.tsv.gz
+	mv $(WORKING_DIR)/semsim-ols-cosinenemotron8b/hp_hp__llama-embed-nemotron-8b.tsv $(WORKING_DIR)/$@/HP_vs_HP.tsv
 	# TODO The next line exists so I can test changes to this goal w/o rerunning semsim pipeline
 	#@tar -xzf "$(WORKING_DIR)/$@/semsim.tar.gz" -C "$(WORKING_DIR)/$@"
 	@echo "🔧 Enriching TSV files with ancestor information from $(ICSCORE_SOURCE)..."
@@ -108,11 +108,11 @@ semsim-ols-cosinemegatron:
 		fi; \
 	done
 	@echo "✅ Enrichment complete"
-	tar -czf "$(WORKING_DIR)/semsim-ols-cosinemegatron/semsim.tar.gz" \
-			-C "$(WORKING_DIR)/semsim-ols-cosinemegatron" \
+	tar -czf "$(WORKING_DIR)/semsim-ols-cosinenemotron8b/semsim.tar.gz" \
+			-C "$(WORKING_DIR)/semsim-ols-cosinenemotron8b" \
 			HP_vs_MP.tsv HP_vs_HP.tsv HP_vs_ZP.tsv log_sql_generation.yml
-	@if [ -f "$(WORKING_DIR)/semsim-ols-cosinemegatron/semsim.tar.gz" ]; then \
-		rm -f "$(WORKING_DIR)/semsim-ols-cosinemegatron/"HP_vs_{MP,HP,ZP}.tsv; \
+	@if [ -f "$(WORKING_DIR)/semsim-ols-cosinenemotron8b/semsim.tar.gz" ]; then \
+		rm -f "$(WORKING_DIR)/semsim-ols-cosinenemotron8b/"HP_vs_{MP,HP,ZP}.tsv; \
 	else \
 		echo "❌ Failed to create semsim.tar.gz"; \
 		exit 1; \
@@ -161,7 +161,7 @@ semsim-ols-cosinetextsmall:
 all-semsim: \
 	semsim-phenio-default \
 	semsim-phenio-equivalent \
-	semsim-ols-cosinemegatron \
+	semsim-ols-cosinenemotron8b \
 	semsim-ols-cosinetextsmall
 
 # Generate SQL files from semantic similarity results
@@ -335,12 +335,12 @@ old-h2:
 	mv $(WORKING_DIR)/semsim-phenio-equivalent/phenotype.mv.db.gz $(WORKING_DIR)/semsim-phenio-equivalent/phenotype-$$(tr -d '\n' < $(WORKING_DIR)/semsim-phenio-equivalent/run_config.txt).mv.db.gz
 
 all-h2:
-	rm -f $(WORKING_DIR)/semsim-ols-cosinemegatron/sql.tar.gz
-	rm -f $(WORKING_DIR)/semsim-ols-cosinemegatron/phenotype.mv.db
-	make exomiser-sql-semsim-ols-cosinemegatron THRESHOLD=0.4 BATCH_SIZE=100000 SCORE=cosine_similarity COMPUTE_PHENODIGM=true
-	make h2-semsim-ols-cosinemegatron
-	gzip -k $(WORKING_DIR)/semsim-ols-cosinemegatron/phenotype.mv.db
-	mv $(WORKING_DIR)/semsim-ols-cosinemegatron/phenotype.mv.db.gz $(WORKING_DIR)/semsim-ols-cosinemegatron/phenotype-$$(tr -d '\n' < $(WORKING_DIR)/semsim-ols-cosinemegatron/run_config.txt).mv.db.gz
+	rm -f $(WORKING_DIR)/semsim-ols-cosinenemotron8b/sql.tar.gz
+	rm -f $(WORKING_DIR)/semsim-ols-cosinenemotron8b/phenotype.mv.db
+	make exomiser-sql-semsim-ols-cosinenemotron8b THRESHOLD=0.4 BATCH_SIZE=100000 SCORE=cosine_similarity COMPUTE_PHENODIGM=true
+	make h2-semsim-ols-cosinenemotron8b
+	gzip -k $(WORKING_DIR)/semsim-ols-cosinenemotron8b/phenotype.mv.db
+	mv $(WORKING_DIR)/semsim-ols-cosinenemotron8b/phenotype.mv.db.gz $(WORKING_DIR)/semsim-ols-cosinenemotron8b/phenotype-$$(tr -d '\n' < $(WORKING_DIR)/semsim-ols-cosinenemotron8b/run_config.txt).mv.db.gz
 	
 	rm -f $(WORKING_DIR)/semsim-ols-cosinetextsmall/sql.tar.gz
 	rm -f $(WORKING_DIR)/semsim-ols-cosinetextsmall/phenotype.mv.db
@@ -350,12 +350,12 @@ all-h2:
 	mv $(WORKING_DIR)/semsim-ols-cosinetextsmall/phenotype.mv.db.gz $(WORKING_DIR)/semsim-ols-cosinetextsmall/phenotype-$$(tr -d '\n' < $(WORKING_DIR)/semsim-ols-cosinetextsmall/run_config.txt).mv.db.gz
 
 unfiltered-h2:
-	rm -f $(WORKING_DIR)/semsim-phenio-default/sql.tar.gz
-	rm -f $(WORKING_DIR)/semsim-phenio-default/phenotype.mv.db
-	make exomiser-sql-semsim-phenio-default THRESHOLD=0.0 BATCH_SIZE=100000 SCORE=phenodigm_score COMPUTE_PHENODIGM=false THRESHOLD_COLUMN=jaccard_similarity
-	make h2-semsim-phenio-default
-	gzip -k $(WORKING_DIR)/semsim-phenio-default/phenotype.mv.db
-	mv $(WORKING_DIR)/semsim-phenio-default/phenotype.mv.db.gz $(WORKING_DIR)/semsim-phenio-default/phenotype-$$(tr -d '\n' < $(WORKING_DIR)/semsim-phenio-default/run_config.txt).mv.db.gz
+	rm -f $(WORKING_DIR)/semsim-phenio-equivalent/sql.tar.gz
+	rm -f $(WORKING_DIR)/semsim-phenio-equivalent/phenotype.mv.db
+	make exomiser-sql-semsim-phenio-equivalent THRESHOLD=0.0 BATCH_SIZE=100000 SCORE=phenodigm_score COMPUTE_PHENODIGM=false THRESHOLD_COLUMN=jaccard_similarity
+	make h2-semsim-phenio-equivalent
+	gzip -k $(WORKING_DIR)/semsim-phenio-equivalent/phenotype.mv.db
+	mv $(WORKING_DIR)/semsim-phenio-equivalent/phenotype.mv.db.gz $(WORKING_DIR)/semsim-phenio-equivalent/phenotype-$$(tr -d '\n' < $(WORKING_DIR)/semsim-phenio-equivalent/run_config.txt).mv.db.gz
 
 cp-h2:
 	@sh -c 'set -e; \
