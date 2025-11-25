@@ -2,6 +2,7 @@
 
 - [2508_phenotype](https://www.dropbox.com/scl/fi/u8fcm01jouotmbythfy9l/2508_phenotype.mv.db.gz?rlkey=04to25ecqii4uuuktnclh9zmr&dl=0): The current Exomiser DB release - all following ones are derived.
 - [phenio-default-0.0-phenodigm_score-false](https://www.dropbox.com/scl/fi/wgsozhbrolslnbfe7kiv6/phenotype-semsim-phenio-default-0.0-phenodigm_score-false.mv.db.gz?rlkey=z45h44w2zm6c9fgo4uj0x147g&dl=0): The same _variant_ of what Exomiser is using, just updated ontology.
+- [phenio-equivalent-0.0-phenodigm_score-false](https://www.dropbox.com/scl/fi/6a7qzkhrzjy3y8o8ck20v/phenotype-semsim-phenio-equivalent-0.0-phenodigm_score-false.mv.db.gz?rlkey=c7m3ot6ywf7dvk6ave9w0kah3&dl=0): The same _variant_ of what Exomiser is using, just using the equivant class PHENIO variant.
 - [ols-cosinemegatron-0.4-cosine_similarity-true](https://www.dropbox.com/scl/fi/6tyacc27v7w923oxxoh6j/phenotype-semsim-ols-cosinemegatron-0.4-cosine_similarity-true.mv.db.gz?rlkey=ub8u5u8qmqbgzbu8taq6k0h53&dl=0)
 - [ols-cosinemegatron-0.7-cosine_similarity-true](https://www.dropbox.com/scl/fi/rh8gn3quo0odj8telxszp/phenotype-semsim-ols-cosinemegatron-0.7-cosine_similarity-true.mv.db.gz?rlkey=0x5hh0qoo2bbuho06m45jy3iq&dl=0)
 - [ols-cosinetextsmall-0.4-cosine_similarity-true](https://www.dropbox.com/scl/fi/7tm0lxcynyg0nrm39hh6f/phenotype-semsim-ols-cosinetextsmall-0.4-cosine_similarity-true.mv.db.gz?rlkey=b4loequoi4b455f9psqxunn9l&dl=0)
