@@ -21,7 +21,8 @@
 
 ## Embedding-based similarity
 
-- [ols-cosinemegatron-0.4-cosine_similarity-true](https://www.dropbox.com/scl/fi/6tyacc27v7w923oxxoh6j/phenotype-semsim-ols-cosinemegatron-0.4-cosine_similarity-true.mv.db.gz?rlkey=ub8u5u8qmqbgzbu8taq6k0h53&dl=0)
-- [ols-cosinemegatron-0.7-cosine_similarity-true](https://www.dropbox.com/scl/fi/rh8gn3quo0odj8telxszp/phenotype-semsim-ols-cosinemegatron-0.7-cosine_similarity-true.mv.db.gz?rlkey=0x5hh0qoo2bbuho06m45jy3iq&dl=0)
+- [ols-cosinenemotron8b-0.4-cosine_similarity-true](https://www.dropbox.com/scl/fi/6tyacc27v7w923oxxoh6j/phenotype-semsim-ols-cosinenemotron8b-0.4-cosine_similarity-true.mv.db.gz?rlkey=ub8u5u8qmqbgzbu8taq6k0h53&dl=0)
+- [ols-cosinenemotron8b-0.7-cosine_similarity-true](https://www.dropbox.com/scl/fi/rh8gn3quo0odj8telxszp/phenotype-semsim-ols-cosinenemotron8b-0.7-cosine_similarity-true.mv.db.gz?rlkey=0x5hh0qoo2bbuho06m45jy3iq&dl=0)
 - [ols-cosinetextsmall-0.4-cosine_similarity-true](https://www.dropbox.com/scl/fi/7tm0lxcynyg0nrm39hh6f/phenotype-semsim-ols-cosinetextsmall-0.4-cosine_similarity-true.mv.db.gz?rlkey=b4loequoi4b455f9psqxunn9l&dl=0)
+- [ols-cosinetextsmall-0.4-cosine_similarity-false](https://www.dropbox.com/scl/fi/xdsvv9z49pb72twyelx8h/phenotype-semsim-ols-cosinetextsmall-0.4-cosine_similarity-false.mv.db.gz?rlkey=0clqlmremkwtshstucopqdq8c&dl=0)
 - [ols-cosinetextsmall-0.7-cosine_similarity-true](https://www.dropbox.com/scl/fi/dmjf9j8pkwhykm8hipnou/phenotype-semsim-ols-cosinetextsmall-0.7-cosine_similarity-true.mv.db.gz?rlkey=rmc2w0fdhmai0q9h67yshrym8&dl=0)
