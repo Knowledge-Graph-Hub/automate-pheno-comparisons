@@ -1,6 +1,7 @@
 # -*- coding: cp936 -*-
 import logging as log
 from pathlib import Path
+import random
 
 import polars as pl
 from tqdm import tqdm
@@ -22,7 +23,8 @@ def semsim_to_exomisersql(
     batch_size: int = 100000,
     score_column: str = None,
     compute_phenodigm: bool = False,
-    format: str = "psv"
+    format: str = "psv",
+    random_range: tuple = None
 ):
     """
     Convert a semantic similarity file to SQL statements for H2 database import.
@@ -38,6 +40,7 @@ def semsim_to_exomisersql(
         threshold (float): Minimum SCORE threshold for filtering results. Default: 0.0.
         batch_size (int): Number of rows to process per batch. Default: 100000.
         score_column (str): Column name to use as the phenodigm score. If None, uses 'phenodigm_score' or 'cosine_similarity'. Default: None.
+        random_range (tuple): Optional tuple (min, max) to generate random scores instead of using calculated scores.
 
     Returns:
         None
@@ -58,7 +61,7 @@ def semsim_to_exomisersql(
     hp_id_list = hp_label_list.join(hp_ic_list, on="hp_id", how="left")
 
     _write_to_file(
-        input_file, subject_prefix, object_prefix, output, threshold, threshold_column, batch_size, score_column, compute_phenodigm, format, hp_id_list
+        input_file, subject_prefix, object_prefix, output, threshold, threshold_column, batch_size, score_column, compute_phenodigm, format, hp_id_list, random_range
     )
 
 
@@ -92,17 +95,18 @@ def _format_curie(id:str, check_prefix: str = None):
         id (str): input id
     """
     curie = converter.compress(id, passthrough=True)
-    
-    if len(curie) > 10:
-        #info_debug.error(f"{curie} too long!")
-        return None
-    
-    if check_prefix and not curie.startswith(f"{check_prefix}:"):
-        return None
-    
+
+    if check_prefix:
+        if not curie.startswith(f"{check_prefix}:"):
+            return None
+
+        # Special case for ZP ids - must be exactly 10 characters (e.g., "ZP:0000001")
+        if check_prefix == "ZP" and len(curie) != 10:
+            return None
+
     return curie
 
-def _get_row(mapping_id, data, subject_prefix, object_prefix, score = None):
+def _get_row(mapping_id, data, subject_prefix, object_prefix, score = 0):
     """format row in a exomiser database way
 
     Args:
@@ -113,10 +117,24 @@ def _get_row(mapping_id, data, subject_prefix, object_prefix, score = None):
     # Handle optional columns with defaults
     jaccard_similarity = data.get('jaccard_similarity', 0)
     ancestor_information_content = data.get('ancestor_information_content', 0)
+    
+    try:
+        jaccard_similarity = float(jaccard_similarity)
+    except (TypeError, ValueError):
+        jaccard_similarity = 0
+    
+    try:
+        ancestor_information_content = float(ancestor_information_content)
+    except (TypeError, ValueError):
+        ancestor_information_content = 0
 
     ancestor_id = _format_curie(data.get('ancestor_id', 'HP:0000000'))
     subject_id = _format_curie(data.get('subject_id', 'HP:0000000'), check_prefix = subject_prefix)
-    object_id = _format_curie(data.get('object_id', 'HP:0000000'), check_prefix = object_prefix)
+    object_id = _format_curie(data.get('object_id', 'HP:0000000'), check_prefix = object_prefix)    
+    
+    if ancestor_id is None:
+        ancestor_id = 'HP:0000000'
+        ancestor_label = 'phenotype'
     
     if subject_id is None or object_id is None:
         return None
@@ -125,20 +143,28 @@ def _get_row(mapping_id, data, subject_prefix, object_prefix, score = None):
         # These are handled separately
         return None
     
-    ancestor_label = data.get('ancestor_label', 'phenotype')
-
+    
     # Truncate labels to 144 characters to fit VARCHAR(255) schema constraint
     MAX_LABEL_LENGTH = 144
-    subject_label = data['subject_label'].replace("'", "")[:MAX_LABEL_LENGTH]
-    object_label = data['object_label'].replace("'", "")[:MAX_LABEL_LENGTH]
-    ancestor_label_safe = ancestor_label.replace("'", "")[:MAX_LABEL_LENGTH]
+    subject_label = data.get('subject_label', 'unknown').replace("'", "")[:MAX_LABEL_LENGTH]
+    object_label = data.get('object_label', 'unknown').replace("'", "")[:MAX_LABEL_LENGTH]
+    ancestor_label = data.get('ancestor_label', 'unknown').replace("'", "")[:MAX_LABEL_LENGTH]
+    
+    if not ancestor_label:
+        ancestor_label = 'unknown'
+
+    if not subject_label:
+        subject_label = 'unknown'
+    
+    if not object_label:
+        object_label = 'unknown'
 
     # TODO:Improve string escaping. Replace this code with parametrised query
-    return [mapping_id, subject_id, subject_label, object_id, object_label, jaccard_similarity, ancestor_information_content, score, ancestor_id, ancestor_label_safe]
+    return [mapping_id, subject_id, subject_label, object_id, object_label, jaccard_similarity, ancestor_information_content, score, ancestor_id, ancestor_label]
 
 
 def _prepare_rows(
-    input_data: pl.DataFrame, subject_prefix: str, object_prefix: str, mapping_id=1, threshold: float = 0.0, threshold_column: str = "default", score_column: str = None, compute_phenodigm: bool = False, format: str = "psv"
+    input_data: pl.DataFrame, subject_prefix: str, object_prefix: str, mapping_id=1, threshold: float = 0.0, threshold_column: str = "default", score_column: str = None, compute_phenodigm: bool = False, format: str = "psv", random_range: tuple = None
 ) -> None:
     """This function is responsible for generate sql insertion query for each semsim profile row
 
@@ -157,6 +183,11 @@ def _prepare_rows(
     rows = []
     for frame in input_data.iter_rows(named=True):
         score = _get_score(frame, score_column=score_column, compute_phenodigm=compute_phenodigm)
+
+        # Overwrite score with random value if random_range is specified
+        if random_range:
+            score = random.uniform(random_range[0], random_range[1])
+
         threshold_score = frame.get(threshold_column, 0) if threshold_column != "default" else score
         if threshold_score >= threshold:
             row = _get_row(data=frame, mapping_id=mapping_id + len(rows), subject_prefix=subject_prefix, object_prefix=object_prefix, score=score)
@@ -178,6 +209,10 @@ def _prepare_rows(
             stream += ",\n".join(rows) + ";"
         elif format == "psv":
             stream += "\n".join(rows)
+    elif mapping_id == 1:
+        if format == "psv":
+            row = [mapping_id, f"{subject_prefix}:0000000", "unknown", f"{object_prefix}:0000000", "unknown", 0, 0, 0, f"{subject_prefix}:0000000", "unknown"]
+            stream += "|".join("" if x is None else str(x) for x in row) + "\n"
 
     return stream
 
@@ -194,6 +229,7 @@ def _write_to_file(
     compute_phenodigm: bool = False,
     format: str = "psv",
     hp_id_list: pl.DataFrame = pl.DataFrame(),
+    random_range: tuple = None,
 ):
     """
     Generate SQL file from semantic similarity data.
@@ -238,7 +274,7 @@ def _write_to_file(
                         ic_score,
                         score,
                         "HP:0000000",
-                        "",
+                        "phenotype",
                     ]
                     rows.append("|".join(str(x) for x in row))
                     mapping_id += 1
@@ -249,7 +285,7 @@ def _write_to_file(
 
             while batches:
                 input_data = batches[0]
-                rows_string = _prepare_rows(input_data, subject_prefix, object_prefix, mapping_id=mapping_id, threshold=threshold, threshold_column=threshold_column, score_column=score_column, compute_phenodigm=compute_phenodigm, format=format)
+                rows_string = _prepare_rows(input_data, subject_prefix, object_prefix, mapping_id=mapping_id, threshold=threshold, threshold_column=threshold_column, score_column=score_column, compute_phenodigm=compute_phenodigm, format=format, random_range=random_range)
                 writer.write(rows_string+"\n")
 
                 len_input_data = len(input_data)
