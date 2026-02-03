@@ -206,9 +206,9 @@ PY
                     sh 'echo "name: ${HP_VS_MP_NAME}" > ${HP_VS_MP_NAME}_log.yaml'
                     sh 'echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> ${HP_VS_MP_NAME}_log.yaml'
                     sh 'echo "versions: " >> ${HP_VS_MP_NAME}_log.yaml'
-                    sh 'echo "  hp: ${HP_VERSION}" >> ${HP_VS_HP_NAME}_log.yaml'
-                    sh 'echo "  mp: ${MP_VERSION}" >> ${HP_VS_HP_NAME}_log.yaml'
-                    sh 'echo "  phenio: ${PHENIO_VERSION}" >> ${HP_VS_HP_NAME}_log.yaml'
+                    sh 'echo "  hp: ${HP_VERSION}" >> ${HP_VS_MP_NAME}_log.yaml'
+                    sh 'echo "  mp: ${MP_VERSION}" >> ${HP_VS_MP_NAME}_log.yaml'
+                    sh 'echo "  phenio: ${PHENIO_VERSION}" >> ${HP_VS_MP_NAME}_log.yaml'
                     // sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> ${HP_VS_MP_NAME}_log.yaml'
                 }
             }
@@ -235,9 +235,9 @@ PY
                     sh 'echo "name: ${HP_VS_ZP_NAME}" > ${HP_VS_ZP_NAME}_log.yaml'
                     sh 'echo "min_ancestor_information_content: $RESNIK_THRESHOLD" >> ${HP_VS_ZP_NAME}_log.yaml'
                     sh 'echo "versions: " >> ${HP_VS_ZP_NAME}_log.yaml'
-                    sh 'echo "  hp: ${HP_VERSION}" >> ${HP_VS_HP_NAME}_log.yaml'
-                    sh 'echo "  mp: ${ZP_VERSION}" >> ${HP_VS_HP_NAME}_log.yaml'
-                    sh 'echo "  phenio: ${PHENIO_VERSION}" >> ${HP_VS_HP_NAME}_log.yaml'
+                    sh 'echo "  hp: ${HP_VERSION}" >> ${HP_VS_ZP_NAME}_log.yaml'
+                    sh 'echo "  zp: ${ZP_VERSION}" >> ${HP_VS_ZP_NAME}_log.yaml'
+                    sh 'echo "  phenio: ${PHENIO_VERSION}" >> ${HP_VS_ZP_NAME}_log.yaml'
                     // sh '. venv/bin/activate && printf "%s\n" "${SHORTHIST}" >> ${HP_VS_ZP_NAME}_log.yaml'
                 }
             }
