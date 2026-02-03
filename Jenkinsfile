@@ -26,6 +26,13 @@ pipeline {
         // Distribution ID for the AWS CloudFront for this bucket
         // used solely for invalidations
         AWS_CLOUDFRONT_DISTRIBUTION_ID = 'EUVSWXZQBXCFP'
+
+        // Variables for using alternate phenio
+        // The ALTERNATE_PHENIO_URL is the URL to the gzipped phenio semantic sql database
+        // It should resemble that at https://s3.amazonaws.com/bbop-sqlite/phenio.db.gz
+        USE_ALTERNATE_PHENIO = 'true' // set to true if you want to use the alternate phenio
+        ALTERNATE_PHENIO_URL = 'http://kghub.io/frozen_incoming_data/phenio-upheno.db.gz'
+        PHENIO_ADAPTER = "${USE_ALTERNATE_PHENIO == 'true' ? 'sqlite:phenio_temp/phenio.db' : 'sqlite:obo:phenio'}" // set adapter based on whether we're using alternate phenio
     }
     options {
         timestamps()
@@ -66,9 +73,10 @@ pipeline {
         stage('Setup') {
             steps {
                 dir('./working') {
-                	sh '/usr/bin/python3.9 -m venv venv'
-			        sh '. venv/bin/activate'
-			        sh './venv/bin/pip install s3cmd'
+                    
+                    sh '/usr/bin/python3.9 -m venv venv'
+                    sh '. venv/bin/activate'
+                    sh './venv/bin/pip install s3cmd'
                     sh './venv/bin/pip install "oaklib[semsimian] @ git+https://github.com/INCATools/ontology-access-kit.git"'
                     // Install duckdb
                     sh 'wget https://github.com/duckdb/duckdb/releases/download/v0.10.3/duckdb_cli-linux-amd64.zip'
@@ -76,17 +84,47 @@ pipeline {
                     sh 'chmod +x duckdb'
                     // Install yq
                     sh 'wget https://github.com/mikefarah/yq/releases/download/v4.2.0/yq_linux_amd64 -O yq && chmod +x yq'
+                    
+                    // Download alternate phenio if USE_ALTERNATE_PHENIO is true
+                    script {
+                        if (env.USE_ALTERNATE_PHENIO == 'true') {
+                            echo "Using alternate phenio database from ${ALTERNATE_PHENIO_URL}"
+                            sh "wget -O phenio.db.gz ${ALTERNATE_PHENIO_URL}"
+                            sh "gunzip phenio.db.gz"
+                            sh "mkdir -p phenio_temp"
+                            sh "cp phenio.db phenio_temp/"
+                            sh "echo 'Alternate phenio database installed successfully'"
+                        } else {
+                            echo "Using default phenio database"
+                        }
+                    }
+                    
                     // Get metadata for all ontologies, including PHENIO
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp ontology-metadata --all | ./yq eval \'.[\"owl:versionIRI\"][0]\' - > hp_version'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:mp ontology-metadata --all | ./yq eval \'.[\"owl:versionIRI\"][0]\' - > mp_version'
                     sh '. venv/bin/activate && runoak -i sqlite:obo:zp ontology-metadata --all | ./yq eval \'.[\"owl:versionIRI\"][0]\' - > zp_version'
-                    sh '. venv/bin/activate && runoak -i sqlite:obo:phenio ontology-metadata --all | ./yq eval \'.[\"owl:versionIRI\"][0]\' - > phenio_version'
+                    sh '. venv/bin/activate && runoak -i ${PHENIO_ADAPTER} ontology-metadata --all | ./yq eval \'.[\"owl:versionInfo\"][0]\' - > phenio_version'
                     script {
                         HP_VERSION = readFile('hp_version').trim()
                         MP_VERSION = readFile('mp_version').trim()
                         ZP_VERSION = readFile('zp_version').trim()
                         PHENIO_VERSION = readFile('phenio_version').trim()
                     }
+
+                    // Print the versions
+                    sh 'echo "HP version: $HP_VERSION"'
+                    sh 'echo "MP version: $MP_VERSION"'
+                    sh 'echo "ZP version: $ZP_VERSION"'
+                    sh 'echo "PHENIO version: $PHENIO_VERSION"'
+
+                    // Update the S3PROJECTDIR to include the version if we're using alternate phenio
+                    script {
+                        if (env.USE_ALTERNATE_PHENIO == 'true') {
+                            S3PROJECTDIR = "${S3PROJECTDIR}${PHENIO_VERSION}/"
+                            echo "Updated S3PROJECTDIR to: $S3PROJECTDIR"
+                        }
+                    }
+
                     // Retrieve association tables
                     sh 'curl -L -s http://purl.obolibrary.org/obo/hp/hpoa/phenotype.hpoa > hpoa.tsv'
                     sh 'curl -L -s https://data.monarchinitiative.org/dipper-kg/final/tsv/gene_associations/gene_phenotype.10090.tsv.gz | gunzip - > mpa.tsv'
@@ -102,8 +140,8 @@ pipeline {
             steps {
                 dir('./working') {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:hp descendants -p i HP:0000118 > HPO_terms.txt && sed "s/ [!] /\t/g" HPO_terms.txt > HPO_terms.tsv'
-                    sh '. venv/bin/activate && runoak -g hpoa.tsv -G hpoa -i sqlite:obo:phenio information-content -p i --use-associations .all > hpoa_ic.tsv && tail -n +2 "hpoa_ic.tsv" > "hpoa_ic.tsv.tmp" && mv "hpoa_ic.tsv.tmp" "hpoa_ic.tsv"'
-                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file hpoa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file HPO_terms.txt -O csv -o ${HP_VS_HP_NAME}.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
+                    sh '. venv/bin/activate && runoak -g hpoa.tsv -G hpoa -i ${PHENIO_ADAPTER} information-content -p i --use-associations .all > hpoa_ic.tsv && tail -n +2 "hpoa_ic.tsv" > "hpoa_ic.tsv.tmp" && mv "hpoa_ic.tsv.tmp" "hpoa_ic.tsv"'
+                    sh '. venv/bin/activate && runoak -i semsimian:${PHENIO_ADAPTER} similarity --no-autolabel --information-content-file hpoa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file HPO_terms.txt -O csv -o ${HP_VS_HP_NAME}.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                     sh '. venv/bin/activate && ./duckdb -c "CREATE TABLE semsim AS SELECT * FROM read_csv(\'${HP_VS_HP_NAME}.tsv\', header=TRUE); CREATE TABLE labels AS SELECT * FROM read_csv(\'HPO_terms.tsv\', header=FALSE); CREATE TABLE labeled1 AS SELECT * FROM semsim n JOIN labels r ON (subject_id = column0); CREATE TABLE labeled2 AS SELECT * FROM labeled1 n JOIN labels r ON (object_id = r.column0); ALTER TABLE labeled2 DROP subject_label; ALTER TABLE labeled2 DROP object_label; ALTER TABLE labeled2 RENAME column1 TO subject_label; ALTER TABLE labeled2 RENAME column1_1 TO object_label; ALTER TABLE labeled2 DROP column0; ALTER TABLE labeled2 DROP column0_1; COPY (SELECT subject_id, subject_label, subject_source, object_id, object_label, object_source, ancestor_id, ancestor_label, ancestor_source, object_information_content, subject_information_content, ancestor_information_content, jaccard_similarity, cosine_similarity, dice_similarity, phenodigm_score FROM labeled2) TO \'${HP_VS_HP_NAME}.tsv.tmp\' WITH (HEADER true, DELIMITER \'\t\')" && mv "${HP_VS_HP_NAME}.tsv.tmp" "${HP_VS_HP_NAME}.tsv"'
                     // sh '. venv/bin/activate && SHORTHIST=$(history | tail -6 | head -5 | cut -c 8-)'                    
                     sh 'echo "name: ${HP_VS_HP_NAME}" > ${HP_VS_HP_NAME}_log.yaml'
@@ -121,16 +159,15 @@ pipeline {
                 dir('./working') {
                     script {
                             withCredentials([
-					            file(credentialsId: 's3cmd_kg_hub_push_configuration', variable: 'S3CMD_CFG'),
-					            file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
-					            string(credentialsId: 'aws_kg_hub_access_key', variable: 'AWS_ACCESS_KEY_ID'),
-					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                                                              
-                                // upload to remote
-				                sh 'tar -czvf $HP_VS_HP_PREFIX.tsv.tar.gz ${HP_VS_HP_NAME}.tsv ${HP_VS_HP_NAME}_log.yaml hpoa_ic.tsv'
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_HP_PREFIX.tsv.tar.gz $S3PROJECTDIR'
-                            }
+                                file(credentialsId: 's3cmd_kg_hub_push_configuration', variable: 'S3CMD_CFG'),
+                                file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
+                                string(credentialsId: 'aws_kg_hub_access_key', variable: 'AWS_ACCESS_KEY_ID'),
+                                string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
 
+                                // upload to remote
+                                sh 'tar -czvf $HP_VS_HP_PREFIX.tar.gz ${HP_VS_HP_NAME}.tsv ${HP_VS_HP_NAME}_log.yaml hpoa_ic.tsv'
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_HP_PREFIX.tar.gz $S3PROJECTDIR'
+                            }
                         }
                     }
                 }
@@ -141,8 +178,8 @@ pipeline {
                 dir('./working') {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:mp descendants -p i MP:0000001 > MP_terms.txt && sed "s/ [!] /\t/g" MP_terms.txt > MP_terms.tsv'
                     sh 'cat HPO_terms.tsv MP_terms.tsv > HP_MP_terms.tsv'
-                    sh '. venv/bin/activate && runoak -g mpa.tsv -G g2t -i sqlite:obo:phenio information-content -p i --use-associations .all > mpa_ic.tsv && tail -n +2 "mpa_ic.tsv" > "mpa_ic.tsv.tmp" && mv "mpa_ic.tsv.tmp" "mpa_ic.tsv"'
-                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file mpa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o ${HP_VS_MP_NAME}.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
+                    sh '. venv/bin/activate && runoak -g mpa.tsv -G g2t -i ${PHENIO_ADAPTER} information-content -p i --use-associations .all > mpa_ic.tsv && tail -n +2 "mpa_ic.tsv" > "mpa_ic.tsv.tmp" && mv "mpa_ic.tsv.tmp" "mpa_ic.tsv"'
+                    sh '. venv/bin/activate && runoak -i semsimian:${PHENIO_ADAPTER} similarity --no-autolabel --information-content-file mpa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file MP_terms.txt -O csv -o ${HP_VS_MP_NAME}.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                     sh '. venv/bin/activate && ./duckdb -c "CREATE TABLE semsim AS SELECT * FROM read_csv(\'${HP_VS_MP_NAME}.tsv\', header=TRUE); CREATE TABLE labels AS SELECT * FROM read_csv(\'HP_MP_terms.tsv\', header=FALSE); CREATE TABLE labeled1 AS SELECT * FROM semsim n JOIN labels r ON (subject_id = column0); CREATE TABLE labeled2 AS SELECT * FROM labeled1 n JOIN labels r ON (object_id = r.column0); ALTER TABLE labeled2 DROP subject_label; ALTER TABLE labeled2 DROP object_label; ALTER TABLE labeled2 RENAME column1 TO subject_label; ALTER TABLE labeled2 RENAME column1_1 TO object_label; ALTER TABLE labeled2 DROP column0; ALTER TABLE labeled2 DROP column0_1; COPY (SELECT subject_id, subject_label, subject_source, object_id, object_label, object_source, ancestor_id, ancestor_label, ancestor_source, object_information_content, subject_information_content, ancestor_information_content, jaccard_similarity, cosine_similarity, dice_similarity, phenodigm_score FROM labeled2) TO \'${HP_VS_MP_NAME}.tsv.tmp\' WITH (HEADER true, DELIMITER \'\t\')" && mv "${HP_VS_MP_NAME}.tsv.tmp" "${HP_VS_MP_NAME}.tsv"'
                     // sh '. venv/bin/activate && SHORTHIST=$(history | tail -7 | head -6 | cut -c 8-)'                    
                     sh 'echo "name: ${HP_VS_MP_NAME}" > ${HP_VS_MP_NAME}_log.yaml'
@@ -161,17 +198,15 @@ pipeline {
                 dir('./working') {
                     script {
                             withCredentials([
-					            file(credentialsId: 's3cmd_kg_hub_push_configuration', variable: 'S3CMD_CFG'),
-					            file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
-					            string(credentialsId: 'aws_kg_hub_access_key', variable: 'AWS_ACCESS_KEY_ID'),
-					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                                                              
+                                file(credentialsId: 's3cmd_kg_hub_push_configuration', variable: 'S3CMD_CFG'),
+                                file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
+                                string(credentialsId: 'aws_kg_hub_access_key', variable: 'AWS_ACCESS_KEY_ID'),
+                                string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
+
                                 // upload to remote
-				                sh 'tar -czvf $HP_VS_MP_PREFIX.tsv.tar.gz ${HP_VS_MP_NAME}.tsv ${HP_VS_MP_NAME}_log.yaml mpa_ic.tsv'
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_MP_PREFIX.tsv.tar.gz $S3PROJECTDIR'
-
+                                sh 'tar -czvf $HP_VS_MP_PREFIX.tar.gz ${HP_VS_MP_NAME}.tsv ${HP_VS_MP_NAME}_log.yaml mpa_ic.tsv'
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_MP_PREFIX.tar.gz $S3PROJECTDIR'
                             }
-
                         }
                     }
                 }
@@ -182,8 +217,8 @@ pipeline {
                 dir('./working') {
                     sh '. venv/bin/activate && runoak -i sqlite:obo:zp descendants -p i ZP:0000000 > ZP_terms.txt && sed "s/ [!] /\t/g" ZP_terms.txt > ZP_terms.tsv'
                     sh 'cat HPO_terms.tsv ZP_terms.tsv > HP_ZP_terms.tsv'
-                    sh '. venv/bin/activate && runoak -g zpa.tsv -G g2t -i sqlite:obo:phenio information-content -p i --use-associations .all > zpa_ic.tsv && tail -n +2 "zpa_ic.tsv" > "zpa_ic.tsv.tmp" && mv "zpa_ic.tsv.tmp" "zpa_ic.tsv"'
-                    sh '. venv/bin/activate && runoak -i semsimian:sqlite:obo:phenio similarity --no-autolabel --information-content-file zpa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file ZP_terms.txt -O csv -o ${HP_VS_ZP_NAME}.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
+                    sh '. venv/bin/activate && runoak -g zpa.tsv -G g2t -i ${PHENIO_ADAPTER} information-content -p i --use-associations .all > zpa_ic.tsv && tail -n +2 "zpa_ic.tsv" > "zpa_ic.tsv.tmp" && mv "zpa_ic.tsv.tmp" "zpa_ic.tsv"'
+                    sh '. venv/bin/activate && runoak -i semsimian:${PHENIO_ADAPTER} similarity --no-autolabel --information-content-file zpa_ic.tsv -p i --set1-file HPO_terms.txt --set2-file ZP_terms.txt -O csv -o ${HP_VS_ZP_NAME}.tsv --min-ancestor-information-content $RESNIK_THRESHOLD'
                     sh '. venv/bin/activate && ./duckdb -c "CREATE TABLE semsim AS SELECT * FROM read_csv(\'${HP_VS_ZP_NAME}.tsv\', header=TRUE); CREATE TABLE labels AS SELECT * FROM read_csv(\'HP_ZP_terms.tsv\', header=FALSE); CREATE TABLE labeled1 AS SELECT * FROM semsim n JOIN labels r ON (subject_id = column0); CREATE TABLE labeled2 AS SELECT * FROM labeled1 n JOIN labels r ON (object_id = r.column0); ALTER TABLE labeled2 DROP subject_label; ALTER TABLE labeled2 DROP object_label; ALTER TABLE labeled2 RENAME column1 TO subject_label; ALTER TABLE labeled2 RENAME column1_1 TO object_label; ALTER TABLE labeled2 DROP column0; ALTER TABLE labeled2 DROP column0_1; COPY (SELECT subject_id, subject_label, subject_source, object_id, object_label, object_source, ancestor_id, ancestor_label, ancestor_source, object_information_content, subject_information_content, ancestor_information_content, jaccard_similarity, cosine_similarity, dice_similarity, phenodigm_score FROM labeled2) TO \'${HP_VS_ZP_NAME}.tsv.tmp\' WITH (HEADER true, DELIMITER \'\t\')" && mv "${HP_VS_ZP_NAME}.tsv.tmp" "${HP_VS_ZP_NAME}.tsv"'
                     // sh '. venv/bin/activate && SHORTHIST=$(history | tail -7 | head -6 | cut -c 8-)'                    
                     sh 'echo "name: ${HP_VS_ZP_NAME}" > ${HP_VS_ZP_NAME}_log.yaml'
@@ -202,16 +237,16 @@ pipeline {
                 dir('./working') {
                     script {
                             withCredentials([
-					            file(credentialsId: 's3cmd_kg_hub_push_configuration', variable: 'S3CMD_CFG'),
-					            file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
-					            string(credentialsId: 'aws_kg_hub_access_key', variable: 'AWS_ACCESS_KEY_ID'),
-					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                                                              
-                                // upload to remote
-				                sh 'tar -czvf $HP_VS_ZP_PREFIX.tsv.tar.gz ${HP_VS_ZP_NAME}.tsv ${HP_VS_ZP_NAME}_log.yaml zpa_ic.tsv'
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_ZP_PREFIX.tsv.tar.gz $S3PROJECTDIR'
-                            }
+                                file(credentialsId: 's3cmd_kg_hub_push_configuration', variable: 'S3CMD_CFG'),
+                                file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
+                                string(credentialsId: 'aws_kg_hub_access_key', variable: 'AWS_ACCESS_KEY_ID'),
+                                string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
 
+                                // upload to remote - now with proper .tar.gz extension
+                                sh 'tar -czvf $HP_VS_ZP_PREFIX.tar.gz ${HP_VS_ZP_NAME}.tsv ${HP_VS_ZP_NAME}_log.yaml zpa_ic.tsv'
+                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_ZP_PREFIX.tar.gz $S3PROJECTDIR'
+
+                            }
                         }
                     }
                 }
