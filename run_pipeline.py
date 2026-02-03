@@ -230,7 +230,8 @@ class ZenodoClient:
             f"{self.base_url}/deposit/depositions/{record_id}/actions/newversion"
         )
         if not response or "links" not in response or "latest_draft" not in response["links"]:
-            raise RuntimeError("Zenodo API did not return a latest_draft link.")
+            raise RuntimeError(
+                "Zenodo API did not return a latest_draft link.")
 
         latest_draft_url = response["links"]["latest_draft"]
         draft = self._request("GET", latest_draft_url)
@@ -264,7 +265,8 @@ class ZenodoClient:
         if parsed.scheme != "https":
             raise ValueError(f"Unexpected Zenodo bucket URL: {bucket_url}")
 
-        target_path = parsed.path.rstrip('/') + '/' + urllib.parse.quote(file_path.name)
+        target_path = parsed.path.rstrip(
+            '/') + '/' + urllib.parse.quote(file_path.name)
         file_size = file_path.stat().st_size
 
         connection = http.client.HTTPSConnection(parsed.netloc)
@@ -608,7 +610,8 @@ class PipelineRunner:
 
         bucket_url = draft.get("links", {}).get("bucket")
         if not bucket_url:
-            raise RuntimeError("Zenodo draft does not include a bucket URL for uploads.")
+            raise RuntimeError(
+                "Zenodo draft does not include a bucket URL for uploads.")
 
         for file_path in existing_files:
             logger.info(f"Uploading {file_path.name} to Zenodo...")
