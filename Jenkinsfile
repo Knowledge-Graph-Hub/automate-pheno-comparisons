@@ -8,10 +8,16 @@ pipeline {
     //triggers{
     //    cron('H H 1 1-12 *')
     //}
+    parameters {
+        password(name: 'ZENODO_TOKEN', defaultValue: '', description: 'Zenodo API token (passed at build time)')
+        string(name: 'ZENODO_RECORD_ID', defaultValue: '18474576', description: 'Zenodo record ID to version')
+    }
     environment {
         BUILDSTARTDATE = sh(script: "echo `date +%Y%m%d`", returnStdout: true).trim()
-        // Store similarity results at s3://kg-hub-public-data/monarch/semsim/
-        S3PROJECTDIR = 's3://kg-hub-public-data/monarch/semsim/'
+        ZENODO_VERSION = sh(script: "echo `date +%F`", returnStdout: true).trim()
+        ZENODO_BASE_URL = 'https://zenodo.org/api'
+        ZENODO_TOKEN = "${params.ZENODO_TOKEN}"
+        ZENODO_RECORD_ID = "${params.ZENODO_RECORD_ID}"
 
 	    RESNIK_THRESHOLD = '1.5' // value for min-ancestor-information-content parameter
 
@@ -23,9 +29,6 @@ pipeline {
         HP_VS_MP_NAME = "${HP_VS_MP_PREFIX}_${BUILDSTARTDATE}"
         HP_VS_ZP_NAME = "${HP_VS_ZP_PREFIX}_${BUILDSTARTDATE}"
 
-        // Distribution ID for the AWS CloudFront for this bucket
-        // used solely for invalidations
-        AWS_CLOUDFRONT_DISTRIBUTION_ID = 'EUVSWXZQBXCFP'
     }
     options {
         timestamps()
@@ -68,7 +71,6 @@ pipeline {
                 dir('./working') {
                 	sh '/usr/bin/python3.9 -m venv venv'
 			        sh '. venv/bin/activate'
-			        sh './venv/bin/pip install s3cmd'
                     sh './venv/bin/pip install "oaklib[semsimian] @ git+https://github.com/INCATools/ontology-access-kit.git"'
                     // Install duckdb
                     sh 'wget https://github.com/duckdb/duckdb/releases/download/v0.10.3/duckdb_cli-linux-amd64.zip'
@@ -116,25 +118,81 @@ pipeline {
             }
         }
 
-        stage('Upload results for HP vs HP through PHENIO') {
+        stage('Prepare Zenodo Draft') {
             steps {
                 dir('./working') {
                     script {
-                            withCredentials([
-					            file(credentialsId: 's3cmd_kg_hub_push_configuration', variable: 'S3CMD_CFG'),
-					            file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
-					            string(credentialsId: 'aws_kg_hub_access_key', variable: 'AWS_ACCESS_KEY_ID'),
-					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                                                              
-                                // upload to remote
-				                sh 'tar -czvf $HP_VS_HP_PREFIX.tsv.tar.gz ${HP_VS_HP_NAME}.tsv ${HP_VS_HP_NAME}_log.yaml hpoa_ic.tsv'
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_HP_PREFIX.tsv.tar.gz $S3PROJECTDIR'
-                            }
-
+                        if (!env.ZENODO_TOKEN?.trim()) {
+                            error('ZENODO_TOKEN parameter is required')
                         }
+                        if (!env.ZENODO_RECORD_ID?.trim()) {
+                            error('ZENODO_RECORD_ID parameter is required')
+                        }
+                        def draftInfo = sh(script: '''
+                            python3.9 - <<'PY'
+import json
+import os
+import urllib.error
+import urllib.request
+
+token = os.environ.get("ZENODO_TOKEN")
+record_id = os.environ.get("ZENODO_RECORD_ID")
+base_url = os.environ.get("ZENODO_BASE_URL", "https://zenodo.org/api").rstrip("/")
+version = os.environ.get("ZENODO_VERSION")
+
+headers = {"Authorization": f"Bearer {token}"}
+
+def request(method, url, payload=None, expect_json=True):
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    req_headers = dict(headers)
+    if payload is not None:
+        req_headers["Content-Type"] = "application/json"
+    request_obj = urllib.request.Request(url, data=data, headers=req_headers, method=method)
+    try:
+        with urllib.request.urlopen(request_obj) as response:
+            body = response.read()
+    except urllib.error.HTTPError as exc:
+        error_body = exc.read().decode("utf-8", "ignore")
+        raise SystemExit(f"Zenodo API error {exc.code} {exc.reason}: {error_body}")
+    if not expect_json:
+        return None
+    return json.loads(body.decode("utf-8")) if body else {}
+
+response = request("POST", f"{base_url}/deposit/depositions/{record_id}/actions/newversion")
+draft_url = response["links"]["latest_draft"]
+draft = request("GET", draft_url)
+draft_id = draft["id"]
+
+for file_info in draft.get("files", []):
+    file_id = file_info.get("id")
+    if file_id is None:
+        continue
+    request("DELETE", f"{base_url}/deposit/depositions/{draft_id}/files/{file_id}", expect_json=False)
+
+metadata = draft.get("metadata", {})
+if version:
+    metadata["version"] = version
+request("PUT", f"{base_url}/deposit/depositions/{draft_id}", payload={"metadata": metadata})
+
+print(json.dumps({"draft_id": draft_id, "bucket": draft["links"]["bucket"]}))
+PY
+                        ''', returnStdout: true).trim()
+                        def info = new groovy.json.JsonSlurper().parseText(draftInfo)
+                        env.ZENODO_DRAFT_ID = info.draft_id.toString()
+                        env.ZENODO_BUCKET_URL = info.bucket.toString()
                     }
                 }
             }
+        }
+
+        stage('Upload results for HP vs HP through PHENIO') {
+            steps {
+                dir('./working') {
+                    sh 'tar -czvf $HP_VS_HP_PREFIX.tsv.tar.gz ${HP_VS_HP_NAME}.tsv ${HP_VS_HP_NAME}_log.yaml hpoa_ic.tsv'
+                    sh 'curl -fSs -H "Authorization: Bearer $ZENODO_TOKEN" --upload-file $HP_VS_HP_PREFIX.tsv.tar.gz "$ZENODO_BUCKET_URL/$HP_VS_HP_PREFIX.tsv.tar.gz"'
+                }
+            }
+        }
 
         stage('Run similarity for HP vs MP through PHENIO') {
             steps {
@@ -159,23 +217,11 @@ pipeline {
         stage('Upload results for HP vs MP through PHENIO') {
             steps {
                 dir('./working') {
-                    script {
-                            withCredentials([
-					            file(credentialsId: 's3cmd_kg_hub_push_configuration', variable: 'S3CMD_CFG'),
-					            file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
-					            string(credentialsId: 'aws_kg_hub_access_key', variable: 'AWS_ACCESS_KEY_ID'),
-					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                                                              
-                                // upload to remote
-				                sh 'tar -czvf $HP_VS_MP_PREFIX.tsv.tar.gz ${HP_VS_MP_NAME}.tsv ${HP_VS_MP_NAME}_log.yaml mpa_ic.tsv'
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_MP_PREFIX.tsv.tar.gz $S3PROJECTDIR'
-
-                            }
-
-                        }
-                    }
+                    sh 'tar -czvf $HP_VS_MP_PREFIX.tsv.tar.gz ${HP_VS_MP_NAME}.tsv ${HP_VS_MP_NAME}_log.yaml mpa_ic.tsv'
+                    sh 'curl -fSs -H "Authorization: Bearer $ZENODO_TOKEN" --upload-file $HP_VS_MP_PREFIX.tsv.tar.gz "$ZENODO_BUCKET_URL/$HP_VS_MP_PREFIX.tsv.tar.gz"'
                 }
             }
+        }
 
         stage('Run similarity for HP vs ZP through PHENIO') {
             steps {
@@ -200,23 +246,48 @@ pipeline {
         stage('Upload results for HP vs ZP through PHENIO') {
             steps {
                 dir('./working') {
-                    script {
-                            withCredentials([
-					            file(credentialsId: 's3cmd_kg_hub_push_configuration', variable: 'S3CMD_CFG'),
-					            file(credentialsId: 'aws_kg_hub_push_json', variable: 'AWS_JSON'),
-					            string(credentialsId: 'aws_kg_hub_access_key', variable: 'AWS_ACCESS_KEY_ID'),
-					            string(credentialsId: 'aws_kg_hub_secret_key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                                                              
-                                // upload to remote
-				                sh 'tar -czvf $HP_VS_ZP_PREFIX.tsv.tar.gz ${HP_VS_ZP_NAME}.tsv ${HP_VS_ZP_NAME}_log.yaml zpa_ic.tsv'
-                                sh '. venv/bin/activate && s3cmd -c $S3CMD_CFG put -pr --acl-public --cf-invalidate $HP_VS_ZP_PREFIX.tsv.tar.gz $S3PROJECTDIR'
-                            }
+                    sh 'tar -czvf $HP_VS_ZP_PREFIX.tsv.tar.gz ${HP_VS_ZP_NAME}.tsv ${HP_VS_ZP_NAME}_log.yaml zpa_ic.tsv'
+                    sh 'curl -fSs -H "Authorization: Bearer $ZENODO_TOKEN" --upload-file $HP_VS_ZP_PREFIX.tsv.tar.gz "$ZENODO_BUCKET_URL/$HP_VS_ZP_PREFIX.tsv.tar.gz"'
+                }
+            }
+        }
 
+        stage('Publish Zenodo Draft') {
+            steps {
+                dir('./working') {
+                    script {
+                        if (!env.ZENODO_DRAFT_ID?.trim()) {
+                            error('Zenodo draft ID not set; cannot publish.')
                         }
+                        sh '''
+                            python3.9 - <<'PY'
+import os
+import urllib.error
+import urllib.request
+
+token = os.environ.get("ZENODO_TOKEN")
+draft_id = os.environ.get("ZENODO_DRAFT_ID")
+base_url = os.environ.get("ZENODO_BASE_URL", "https://zenodo.org/api").rstrip("/")
+
+request_obj = urllib.request.Request(
+    f"{base_url}/deposit/depositions/{draft_id}/actions/publish",
+    headers={"Authorization": f"Bearer {token}"},
+    method="POST"
+)
+try:
+    with urllib.request.urlopen(request_obj) as response:
+        response.read()
+except urllib.error.HTTPError as exc:
+    error_body = exc.read().decode("utf-8", "ignore")
+    raise SystemExit(f"Zenodo publish failed {exc.code} {exc.reason}: {error_body}")
+PY
+                        '''
                     }
                 }
             }
         }
+
+    }
 
     post {
         always {
