@@ -28,6 +28,8 @@ Examples:
 
 import argparse
 import gzip
+import http.client
+import json
 import logging
 import os
 import shutil
@@ -36,6 +38,8 @@ import sys
 import tarfile
 import threading
 import time
+import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from datetime import datetime
@@ -131,6 +135,7 @@ class PipelineConfig:
 
         # Date-based naming
         self.build_date = datetime.now().strftime('%Y%m%d')
+        self.release_date = datetime.now().strftime('%Y-%m-%d')
 
         # Pipeline parameters
         self.resnik_threshold = '1.5'
@@ -182,6 +187,120 @@ class PipelineConfig:
         else:
             # Use default OBO PHENIO with semsimian
             return "semsimian:sqlite:obo:phenio"
+
+
+class ZenodoClient:
+    """Minimal Zenodo API client for creating new versions and uploading files."""
+
+    def __init__(self, token: str, base_url: str = "https://zenodo.org/api"):
+        self.token = token
+        self.base_url = base_url.rstrip('/')
+
+    def _request(self, method: str, url: str, payload: Optional[Dict] = None,
+                 expect_json: bool = True) -> Optional[Dict]:
+        data = None
+        headers = {"Authorization": f"Bearer {self.token}"}
+        if payload is not None:
+            data = json.dumps(payload).encode('utf-8')
+            headers["Content-Type"] = "application/json"
+
+        request = urllib.request.Request(url, data=data,
+                                         headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(request) as response:
+                body = response.read()
+        except urllib.error.HTTPError as exc:
+            error_body = exc.read().decode('utf-8', 'ignore')
+            raise RuntimeError(
+                f"Zenodo API request failed ({method} {url}): "
+                f"{exc.code} {exc.reason} {error_body}"
+            ) from exc
+
+        if not expect_json:
+            return None
+
+        if not body:
+            return {}
+        return json.loads(body.decode('utf-8'))
+
+    def create_new_version_draft(self, record_id: str) -> Dict:
+        """Create a new version draft from an existing record."""
+        response = self._request(
+            "POST",
+            f"{self.base_url}/deposit/depositions/{record_id}/actions/newversion"
+        )
+        if not response or "links" not in response or "latest_draft" not in response["links"]:
+            raise RuntimeError(
+                "Zenodo API did not return a latest_draft link.")
+
+        latest_draft_url = response["links"]["latest_draft"]
+        draft = self._request("GET", latest_draft_url)
+        if not draft or "id" not in draft:
+            raise RuntimeError("Zenodo API did not return a draft deposition.")
+        return draft
+
+    def delete_draft_files(self, draft_id: int, files: List[Dict]) -> None:
+        """Delete all files copied into the draft from the previous version."""
+        for file_info in files:
+            file_id = file_info.get("id")
+            if file_id is None:
+                continue
+            self._request(
+                "DELETE",
+                f"{self.base_url}/deposit/depositions/{draft_id}/files/{file_id}",
+                expect_json=False
+            )
+
+    def update_metadata(self, draft_id: int, metadata: Dict) -> None:
+        """Update draft metadata."""
+        self._request(
+            "PUT",
+            f"{self.base_url}/deposit/depositions/{draft_id}",
+            payload={"metadata": metadata}
+        )
+
+    def upload_file(self, bucket_url: str, file_path: Path) -> None:
+        """Stream a file upload to the Zenodo bucket URL."""
+        parsed = urllib.parse.urlparse(bucket_url)
+        if parsed.scheme != "https":
+            raise ValueError(f"Unexpected Zenodo bucket URL: {bucket_url}")
+
+        target_path = parsed.path.rstrip(
+            '/') + '/' + urllib.parse.quote(file_path.name)
+        file_size = file_path.stat().st_size
+
+        connection = http.client.HTTPSConnection(parsed.netloc)
+        try:
+            connection.putrequest("PUT", target_path)
+            connection.putheader("Authorization", f"Bearer {self.token}")
+            connection.putheader("Content-Type", "application/octet-stream")
+            connection.putheader("Content-Length", str(file_size))
+            connection.endheaders()
+
+            with file_path.open('rb') as handle:
+                while True:
+                    chunk = handle.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    connection.send(chunk)
+
+            response = connection.getresponse()
+            body = response.read().decode('utf-8', 'ignore')
+            if response.status >= 400:
+                raise RuntimeError(
+                    f"Zenodo upload failed for {file_path.name}: "
+                    f"{response.status} {response.reason} {body}"
+                )
+        finally:
+            connection.close()
+
+    def publish(self, draft_id: int) -> None:
+        """Publish the Zenodo draft deposition."""
+        self._request(
+            "POST",
+            f"{self.base_url}/deposit/depositions/{draft_id}/actions/publish",
+            expect_json=False
+        )
 
 
 class PipelineRunner:
@@ -465,6 +584,43 @@ class PipelineRunner:
 
         logger.info(f"Tarball created: {output_name}")
 
+    def upload_results_to_zenodo(self, record_id: str, token: str,
+                                 version_name: str, files: List[Path],
+                                 base_url: str = "https://zenodo.org/api") -> None:
+        """Create a new Zenodo version and upload result files."""
+        existing_files = [path for path in files if path.exists()]
+        if not existing_files:
+            logger.warning("No result files found to upload to Zenodo.")
+            return
+
+        logger.info("Creating new Zenodo version draft...")
+        client = ZenodoClient(token=token, base_url=base_url)
+        draft = client.create_new_version_draft(record_id)
+        draft_id = draft["id"]
+
+        logger.info("Clearing files inherited from previous Zenodo version...")
+        client.delete_draft_files(draft_id, draft.get("files", []))
+
+        metadata = draft.get("metadata", {})
+        if version_name:
+            metadata["version"] = version_name
+
+        logger.info(f"Updating Zenodo metadata version to {version_name}...")
+        client.update_metadata(draft_id, metadata)
+
+        bucket_url = draft.get("links", {}).get("bucket")
+        if not bucket_url:
+            raise RuntimeError(
+                "Zenodo draft does not include a bucket URL for uploads.")
+
+        for file_path in existing_files:
+            logger.info(f"Uploading {file_path.name} to Zenodo...")
+            client.upload_file(bucket_url, file_path)
+
+        logger.info("Publishing Zenodo draft...")
+        client.publish(draft_id)
+        logger.info(f"Zenodo release published (version {version_name}).")
+
     def run_similarity_comparison(self, ont1: str, ont2: str,
                                   ont1_root: str, ont2_root: str,
                                   ont1_prefix: str, ont2_prefix: str,
@@ -642,6 +798,31 @@ def main():
     )
 
     parser.add_argument(
+        '--zenodo-record-id',
+        type=str,
+        help='Zenodo record ID to version and upload results into'
+    )
+
+    parser.add_argument(
+        '--zenodo-token',
+        type=str,
+        help='Zenodo API token (pass at runtime, do not store in config)'
+    )
+
+    parser.add_argument(
+        '--zenodo-version',
+        type=str,
+        help='Version name for Zenodo release (default: today YYYY-MM-DD)'
+    )
+
+    parser.add_argument(
+        '--zenodo-base-url',
+        type=str,
+        default='https://zenodo.org/api',
+        help='Zenodo API base URL (default: https://zenodo.org/api)'
+    )
+
+    parser.add_argument(
         '--skip-setup',
         action='store_true',
         help='Skip setup stage (use if already configured)'
@@ -673,6 +854,7 @@ def main():
         custom_phenio=custom_phenio_path
     )
     config.resnik_threshold = args.resnik_threshold
+    zenodo_version = args.zenodo_version or config.release_date
 
     # Log configuration
     if config.custom_phenio:
@@ -686,6 +868,8 @@ def main():
     runner = PipelineRunner(config)
 
     try:
+        comparisons_run: List[str] = []
+
         # Run setup unless skipped
         if not args.skip_setup:
             runner.setup()
@@ -712,12 +896,41 @@ def main():
             runner.run_hp_vs_hp()
             runner.run_hp_vs_mp()
             runner.run_hp_vs_zp()
+            comparisons_run = ['hp_vs_hp', 'hp_vs_mp', 'hp_vs_zp']
         elif args.comparison == 'hp-hp':
             runner.run_hp_vs_hp()
+            comparisons_run = ['hp_vs_hp']
         elif args.comparison == 'hp-mp':
             runner.run_hp_vs_mp()
+            comparisons_run = ['hp_vs_mp']
         elif args.comparison == 'hp-zp':
             runner.run_hp_vs_zp()
+            comparisons_run = ['hp_vs_zp']
+
+        if args.test_mode:
+            logger.info("Test mode enabled; skipping Zenodo upload.")
+        elif args.zenodo_token or args.zenodo_record_id:
+            if not (args.zenodo_token and args.zenodo_record_id):
+                logger.error(
+                    "Both --zenodo-token and --zenodo-record-id are required "
+                    "to upload results to Zenodo."
+                )
+                sys.exit(1)
+
+            tarballs = []
+            for comparison in comparisons_run:
+                prefix = getattr(config, f"{comparison}_prefix")
+                tarballs.append(config.working_dir / f"{prefix}.tar.gz")
+
+            runner.upload_results_to_zenodo(
+                record_id=args.zenodo_record_id,
+                token=args.zenodo_token,
+                version_name=zenodo_version,
+                files=tarballs,
+                base_url=args.zenodo_base_url
+            )
+        else:
+            logger.info("Zenodo upload not configured; skipping.")
 
         logger.info("=" * 80)
         logger.info("SUCCESS! Pipeline completed successfully.")
