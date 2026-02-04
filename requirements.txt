@@ -3,4 +3,4 @@
 
 # Ontology Access Kit with semsimian support
 # This includes semantic similarity analysis capabilities
-oaklib[semsimian] @ git+https://github.com/INCATools/ontology-access-kit.git
+oaklib[semsimian]
