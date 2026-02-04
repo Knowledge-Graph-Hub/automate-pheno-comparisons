@@ -71,7 +71,8 @@ pipeline {
                 dir('./working') {
                 	sh '/usr/bin/python3.9 -m venv venv'
 			        sh '. venv/bin/activate'
-                    sh './venv/bin/pip install "oaklib[semsimian]"'
+                    sh './venv/bin/pip install --upgrade pip setuptools wheel'
+                    sh './venv/bin/pip install --prefer-binary "oaklib[semsimian]"'
                     // Install duckdb
                     sh 'wget https://github.com/duckdb/duckdb/releases/download/v0.10.3/duckdb_cli-linux-amd64.zip'
                     sh '. venv/bin/activate && python -m zipfile -e duckdb_cli-linux-amd64.zip ./'
