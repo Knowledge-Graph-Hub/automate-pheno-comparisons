@@ -71,7 +71,7 @@ pipeline {
                 dir('./working') {
                 	sh '/usr/bin/python3.9 -m venv venv'
 			        sh '. venv/bin/activate'
-                    sh './venv/bin/pip install "oaklib[semsimian] @ git+https://github.com/INCATools/ontology-access-kit.git"'
+                    sh './venv/bin/pip install "oaklib[semsimian]"'
                     // Install duckdb
                     sh 'wget https://github.com/duckdb/duckdb/releases/download/v0.10.3/duckdb_cli-linux-amd64.zip'
                     sh '. venv/bin/activate && python -m zipfile -e duckdb_cli-linux-amd64.zip ./'
