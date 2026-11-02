@@ -92,11 +92,12 @@ pipeline {
                     }
                     // Retrieve association tables
                     sh 'curl -L -s http://purl.obolibrary.org/obo/hp/hpoa/phenotype.hpoa > hpoa.tsv'
-                    sh 'curl -L -s https://data.monarchinitiative.org/dipper-kg/final/tsv/gene_associations/gene_phenotype.10090.tsv.gz | gunzip - > mpa.tsv'
-                    sh 'curl -L -s https://data.monarchinitiative.org/dipper-kg/final/tsv/gene_associations/gene_phenotype.7955.tsv.gz | gunzip - > zpa.tsv'
+                    sh 'curl -L -s https://data.monarchinitiative.org/monarch-kg/latest/tsv/gene_associations/gene_phenotype.10090.tsv.gz | gunzip - > mpa.tsv'
+                    sh 'curl -L -s https://data.monarchinitiative.org/monarch-kg/latest/tsv/gene_associations/gene_phenotype.7955.tsv.gz | gunzip - > zpa.tsv'
                     // MP and ZP need to be preprocessed to pairwise associations
-                    sh 'cut -f1,5 mpa.tsv | grep "MP" > "mpa.tsv.tmp" && mv "mpa.tsv.tmp" "mpa.tsv"'
-                    sh 'cut -f1,5 zpa.tsv | grep "ZP" > "zpa.tsv.tmp" && mv "zpa.tsv.tmp" "zpa.tsv"'
+                    // monarch-kg columns: subject=1, negated=6, object=8
+                    sh 'awk -F"\\t" "NR > 1 && tolower(\\$6) != \\"true\\" && index(\\$8, \\"MP:\\") == 1 {print \\$1 \\"\\t\\" \\$8}" mpa.tsv > "mpa.tsv.tmp" && mv "mpa.tsv.tmp" "mpa.tsv"'
+                    sh 'awk -F"\\t" "NR > 1 && tolower(\\$6) != \\"true\\" && index(\\$8, \\"ZP:\\") == 1 {print \\$1 \\"\\t\\" \\$8}" zpa.tsv > "zpa.tsv.tmp" && mv "zpa.tsv.tmp" "zpa.tsv"'
                 }
             }
         }

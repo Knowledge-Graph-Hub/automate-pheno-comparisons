@@ -146,16 +146,16 @@ The pipeline creates the following outputs in the working directory:
 
 ### Result Files
 - `HP_vs_HP_semsimian_phenio_YYYYMMDD.tsv` - HP vs HP similarity results
-- `HP_vs_MP_semsimian_phenio_YYYYMMDD.tsv` - HP vs MP similarity results
-- `HP_vs_ZP_semsimian_phenio_YYYYMMDD.tsv` - HP vs ZP similarity results
+- `HP_vs_MP_semsimian_phenio_kg-<release>_YYYYMMDD.tsv` - HP vs MP similarity results
+- `HP_vs_ZP_semsimian_phenio_kg-<release>_YYYYMMDD.tsv` - HP vs ZP similarity results
 
 ### Log Files
 - `*_log.yaml` - Metadata including ontology versions and parameters
 
 ### Tarballs
-- `HP_vs_HP_semsimian_phenio.tar.gz` - Compressed results for HP vs HP
-- `HP_vs_MP_semsimian_phenio.tar.gz` - Compressed results for HP vs MP
-- `HP_vs_ZP_semsimian_phenio.tar.gz` - Compressed results for HP vs ZP
+- `HP_vs_HP_semsimian_phenio.tsv.tar.gz` - Compressed results for HP vs HP
+- `HP_vs_MP_semsimian_phenio_kg-<release>.tsv.tar.gz` - Compressed results for HP vs MP
+- `HP_vs_ZP_semsimian_phenio_kg-<release>.tsv.tar.gz` - Compressed results for HP vs ZP
 
 Each tarball contains:
 - The main similarity TSV file

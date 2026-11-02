@@ -27,11 +27,13 @@ Examples:
 """
 
 import argparse
+import hashlib
 import gzip
 import http.client
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -124,10 +126,38 @@ class ProgressTimer:
         return False
 
 
+# Mouse (MP) and zebrafish (ZP) gene-phenotype annotations used for information content.
+# Output names for HP-MP / HP-ZP carry a "kg-<release>" tag naming the KG the annotations came from.
+ANNOTATION_SOURCES = {
+    # Current Monarch KG export (Biolink TSV: subject=col 1, negated=col 6, object=col 8).
+    'monarch-kg': {
+        'base_url': 'https://data.monarchinitiative.org/monarch-kg/latest/tsv/gene_associations/',
+        'metadata_url': 'https://data.monarchinitiative.org/monarch-kg/latest/metadata.yaml',
+        'legacy_format': False,
+        'tag': None,  # resolved at setup from the KG release metadata, e.g. kg-2026-09-04
+        'archive': None,
+    },
+    # Final dipper-era Monarch KG (2021-09), frozen. Byte-identical to
+    # gs://monarch-archive/202109/tsv/gene_associations/ (that bucket is not public).
+    # Legacy TSV: subject=col 1, object=col 5.
+    'monarch-kg-2021-09': {
+        'base_url': 'https://data.monarchinitiative.org/dipper-kg/final/tsv/gene_associations/',
+        'metadata_url': None,
+        'legacy_format': True,
+        'tag': 'kg-2021-09',
+        'archive': 'gs://monarch-archive/202109/tsv/gene_associations/',
+    },
+}
+
+ENGINES = ('semsimian', 'ducksim')
+DUCKSIM_SCRIPT = Path(__file__).resolve().parent / 'experimental' / 'ducksim_all_by_all.py'
+
+
 class PipelineConfig:
     """Configuration for the phenotype comparison pipeline."""
 
-    def __init__(self, working_dir: Path, custom_phenio: Optional[Path] = None):
+    def __init__(self, working_dir: Path, custom_phenio: Optional[Path] = None,
+                 animal_annotations: str = 'monarch-kg', engine: str = 'semsimian'):
         # Convert to absolute path immediately to avoid issues with os.chdir
         self.working_dir = Path(working_dir).absolute()
         self.custom_phenio = Path(
@@ -139,16 +169,21 @@ class PipelineConfig:
 
         # Pipeline parameters
         self.resnik_threshold = '1.5'
+        if animal_annotations not in ANNOTATION_SOURCES:
+            raise ValueError(f"unknown animal annotation source {animal_annotations!r}")
+        if engine not in ENGINES:
+            raise ValueError(f"unknown engine {engine!r}")
+        self.animal_annotations = animal_annotations
+        self.engine = engine
+        # provenance of each downloaded annotation file: {'hpoa'|'mpa'|'zpa': {...}}
+        self.annotation_provenance: Dict[str, Dict[str, str]] = {}
 
-        # Output prefixes
+        # Output names. HP-HP uses no KG annotations, so it is untagged; HP-MP / HP-ZP
+        # get "_kg-<release>" once the annotation tag is known (see apply_annotation_tag).
+        self.annotation_tag: Optional[str] = ANNOTATION_SOURCES[animal_annotations]['tag']
         self.hp_vs_hp_prefix = "HP_vs_HP_semsimian_phenio"
-        self.hp_vs_mp_prefix = "HP_vs_MP_semsimian_phenio"
-        self.hp_vs_zp_prefix = "HP_vs_ZP_semsimian_phenio"
-
-        # Output names with date
         self.hp_vs_hp_name = f"{self.hp_vs_hp_prefix}_{self.build_date}"
-        self.hp_vs_mp_name = f"{self.hp_vs_mp_prefix}_{self.build_date}"
-        self.hp_vs_zp_name = f"{self.hp_vs_zp_prefix}_{self.build_date}"
+        self.apply_annotation_tag(self.annotation_tag)
 
         # Ontology versions (will be populated during setup)
         self.hp_version: Optional[str] = None
@@ -159,6 +194,40 @@ class PipelineConfig:
         # Tools
         self.duckdb_path = self.working_dir / 'duckdb'
         self.yq_path = self.working_dir / 'yq'
+
+    def apply_annotation_tag(self, tag: Optional[str]) -> None:
+        """Set HP-MP / HP-ZP output names from the annotation-source tag (e.g. kg-2026-09-04)."""
+        self.annotation_tag = tag
+        suffix = f"_{tag}" if tag else ""
+        self.hp_vs_mp_prefix = f"HP_vs_MP_semsimian_phenio{suffix}"
+        self.hp_vs_zp_prefix = f"HP_vs_ZP_semsimian_phenio{suffix}"
+        self.hp_vs_mp_name = f"{self.hp_vs_mp_prefix}_{self.build_date}"
+        self.hp_vs_zp_name = f"{self.hp_vs_zp_prefix}_{self.build_date}"
+
+    def save_annotation_state(self) -> None:
+        """Persist the tag and provenance so --skip-setup / --upload-only runs reuse them."""
+        state = {'animal_annotations': self.animal_annotations, 'annotation_tag': self.annotation_tag,
+                 'provenance': self.annotation_provenance}
+        (self.working_dir / 'annotation_sources.json').write_text(json.dumps(state, indent=2) + '\n')
+
+    def load_annotation_state(self) -> None:
+        path = self.working_dir / 'annotation_sources.json'
+        if not path.exists():
+            raise RuntimeError(f"{path} not found; run setup for this working directory first")
+        state = json.loads(path.read_text())
+        if state['animal_annotations'] != self.animal_annotations:
+            raise RuntimeError(
+                f"working dir was set up with --animal-annotations {state['animal_annotations']}, "
+                f"not {self.animal_annotations}; use a separate --working-dir per source")
+        self.annotation_provenance = state.get('provenance', {})
+        self.apply_annotation_tag(state['annotation_tag'])
+
+    def get_ducksim_phenio_path(self) -> Path:
+        """Local PHENIO SQLite file for ducksim (the custom file, or oaklib's pystow cache)."""
+        if self.custom_phenio:
+            return self.custom_phenio
+        import pystow  # oaklib dependency; honors PYSTOW_HOME
+        return pystow.join('oaklib') / 'phenio.db'
 
     def get_phenio_identifier(self) -> str:
         """
@@ -329,7 +398,7 @@ class PipelineRunner:
             logger.error(f"Error output: {e.stderr}")
             raise
 
-    def download_file(self, url: str, output_path: Path, chunk_size: int = 8192) -> None:
+    def download_file(self, url: str, output_path: Path, chunk_size: int = 8192) -> Optional[str]:
         """
         Download a file from URL to output path using Python urllib.
 
@@ -337,10 +406,14 @@ class PipelineRunner:
             url: URL to download from
             output_path: Path where to save the file
             chunk_size: Size of chunks to read at a time
+
+        Returns:
+            The server's Last-Modified header, if any (recorded as provenance)
         """
         logger.info(f"Downloading {url}...")
         try:
             with urllib.request.urlopen(url) as response:
+                last_modified = response.headers.get('Last-Modified')
                 with open(output_path, 'wb') as out_file:
                     while True:
                         chunk = response.read(chunk_size)
@@ -348,6 +421,7 @@ class PipelineRunner:
                             break
                         out_file.write(chunk)
             logger.debug(f"Downloaded to {output_path}")
+            return last_modified
         except Exception as e:
             logger.error(f"Failed to download {url}: {e}")
             raise
@@ -460,29 +534,70 @@ class PipelineRunner:
         """Download and preprocess association tables."""
         logger.info("Downloading association tables...")
 
+        source = ANNOTATION_SOURCES[self.config.animal_annotations]
+        wd = self.config.working_dir
+
         # Download HPOA (Human Phenotype Ontology Annotations)
         logger.info("Downloading HPOA...")
         hpoa_url = "http://purl.obolibrary.org/obo/hp/hpoa/phenotype.hpoa"
-        self.download_file(hpoa_url, self.config.working_dir / 'hpoa.tsv')
+        self.download_file(hpoa_url, wd / 'hpoa.tsv')
+        hpoa_version = None
+        with open(wd / 'hpoa.tsv') as fh:
+            for line in fh:
+                if not line.startswith('#'):
+                    break
+                if line.startswith('#version:'):
+                    hpoa_version = line.split(':', 1)[1].strip()
+        self.config.annotation_provenance['hpoa'] = {
+            'url': hpoa_url, 'version': hpoa_version, 'md5': self.md5(wd / 'hpoa.tsv')}
 
-        # Download MPA (Mouse Phenotype Annotations)
-        logger.info("Downloading MPA...")
-        mpa_url = "https://data.monarchinitiative.org/dipper-kg/final/tsv/gene_associations/gene_phenotype.10090.tsv.gz"
-        self.download_and_decompress_gzip(
-            mpa_url, self.config.working_dir / 'mpa.tsv')
+        # KG release tag for the animal annotations
+        if source['tag'] is None:
+            meta = urllib.request.urlopen(source['metadata_url']).read().decode('utf-8')
+            match = re.search(r"^version:\s*'?([0-9-]+)'?", meta, re.MULTILINE)
+            if not match:
+                raise RuntimeError(f"could not read KG version from {source['metadata_url']}")
+            self.config.apply_annotation_tag(f"kg-{match.group(1)}")
+        else:
+            self.config.apply_annotation_tag(source['tag'])
+        logger.info(f"Animal annotations: {self.config.animal_annotations} "
+                    f"(tag {self.config.annotation_tag})")
 
-        # Download ZPA (Zebrafish Phenotype Annotations)
-        logger.info("Downloading ZPA...")
-        zpa_url = "https://data.monarchinitiative.org/dipper-kg/final/tsv/gene_associations/gene_phenotype.7955.tsv.gz"
-        self.download_and_decompress_gzip(
-            zpa_url, self.config.working_dir / 'zpa.tsv')
+        # Download MPA / ZPA (mouse / zebrafish gene-phenotype annotations)
+        for key, taxon in (('mpa', '10090'), ('zpa', '7955')):
+            url = f"{source['base_url']}gene_phenotype.{taxon}.tsv.gz"
+            logger.info(f"Downloading {key.upper()} from {url}...")
+            gz_path = wd / f"{key}.tsv.gz"
+            last_modified = self.download_file(url, gz_path)
+            prov = {'url': url, 'md5_gz': self.md5(gz_path), 'last_modified': last_modified,
+                    'kg': self.config.annotation_tag}
+            if source['archive']:
+                prov['archive_copy'] = f"{source['archive']}gene_phenotype.{taxon}.tsv.gz"
+            self.config.annotation_provenance[key] = prov
+            with gzip.open(gz_path, 'rb') as src, open(wd / f"{key}.tsv", 'wb') as dst:
+                shutil.copyfileobj(src, dst)
+            gz_path.unlink()
 
-        # Preprocess MP and ZP to pairwise associations
+        # Preprocess MP and ZP to pairwise (gene, phenotype) associations
         logger.info("Preprocessing association tables...")
-        self.run_command(
-            'cut -f1,5 mpa.tsv | grep "MP" > mpa.tsv.tmp && mv mpa.tsv.tmp mpa.tsv')
-        self.run_command(
-            'cut -f1,5 zpa.tsv | grep "ZP" > zpa.tsv.tmp && mv zpa.tsv.tmp zpa.tsv')
+        for name, prefix in (('mpa.tsv', 'MP'), ('zpa.tsv', 'ZP')):
+            if source['legacy_format']:
+                # dipper-era TSV: subject=col 1, object=col 5. Kept exactly as earlier builds did it.
+                cmd = f'cut -f1,5 {name} | grep "{prefix}" > {name}.tmp && mv {name}.tmp {name}'
+            else:
+                # monarch-kg TSV: subject=col 1, negated=col 6, object=col 8; drop header + negated rows.
+                cmd = (f"awk -F'\\t' 'NR > 1 && tolower($6) != \"true\" && index($8, \"{prefix}:\") == 1 "
+                       f"{{print $1 \"\\t\" $8}}' {name} > {name}.tmp && mv {name}.tmp {name}")
+            self.run_command(cmd)
+        self.config.save_annotation_state()
+
+    @staticmethod
+    def md5(path: Path) -> str:
+        h = hashlib.md5()
+        with open(path, 'rb') as fh:
+            for block in iter(lambda: fh.read(1 << 24), b''):
+                h.update(block)
+        return h.hexdigest()
 
     def get_ontology_terms(self, ontology: str, root_term: str, output_prefix: str):
         """Get descendant terms for an ontology."""
@@ -510,6 +625,18 @@ class PipelineRunner:
 
         with ProgressTimer(f"Calculating information content from {association_file}"):
             self.run_command(cmd)
+
+    def run_similarity_analysis_ducksim(self, set1_file: str, set2_file: str, ic_file: str,
+                                        labels_file: str, output_file: str):
+        """Same all-by-all table via DuckDB SQL (validated equal to semsimian); writes labels too."""
+        cmd = (
+            f"{sys.executable} {DUCKSIM_SCRIPT} --phenio {self.config.get_ducksim_phenio_path()} "
+            f"--ic {ic_file} --set1 {set1_file} --set2 {set2_file} --labels {labels_file} "
+            f"--out {output_file}.tmp --threshold {self.config.resnik_threshold}"
+        )
+        with ProgressTimer(f"Similarity analysis (ducksim) -> {output_file}"):
+            self.run_command(cmd)
+        self.run_command(f'mv "{output_file}.tmp" "{output_file}"')
 
     def run_similarity_analysis(self, set1_file: str, set2_file: str, ic_file: str, output_file: str):
         """Run semantic similarity analysis using semsimian."""
@@ -551,19 +678,28 @@ class PipelineRunner:
         self.run_command(f'{self.config.duckdb_path} -c "{duckdb_sql}"')
         self.run_command(f'mv "{output_file}.tmp" "{output_file}"')
 
-    def create_log_file(self, name: str, versions: Dict[str, Optional[str]], output_file: str):
+    def create_log_file(self, name: str, versions: Dict[str, Optional[str]], output_file: str,
+                        annotation_key: Optional[str] = None):
         """Create YAML log file with metadata."""
         logger.info(f"Creating log file: {output_file}...")
 
         log_content = [
             f"name: {name}",
             f"min_ancestor_information_content: {self.config.resnik_threshold}",
+            f"engine: {self.config.engine}",
             "versions:"
         ]
 
         for key, value in versions.items():
             if value:
                 log_content.append(f"  {key}: {value}")
+
+        prov = self.config.annotation_provenance.get(annotation_key or '', {})
+        if prov:
+            log_content.append("annotations:")
+            for key, value in prov.items():
+                if value:
+                    log_content.append(f"  {key}: {json.dumps(value)}")
 
         log_path = self.config.working_dir / output_file
         log_path.write_text('\n'.join(log_content) + '\n')
@@ -669,16 +805,20 @@ class PipelineRunner:
 
         # Run similarity analysis
         similarity_output = f"{output_name}.tsv"
-        self.run_similarity_analysis(
-            f'{ont1_prefix}_terms.txt',
-            f'{ont2_prefix}_terms.txt',
-            ic_output,
-            similarity_output
-        )
-
-        # Add labels
-        self.add_labels_with_duckdb(
-            similarity_output, labels_file, similarity_output)
+        if self.config.engine == 'ducksim':
+            self.run_similarity_analysis_ducksim(
+                f'{ont1_prefix}_terms.txt', f'{ont2_prefix}_terms.txt',
+                ic_output, labels_file, similarity_output)
+        else:
+            self.run_similarity_analysis(
+                f'{ont1_prefix}_terms.txt',
+                f'{ont2_prefix}_terms.txt',
+                ic_output,
+                similarity_output
+            )
+            # Add labels
+            self.add_labels_with_duckdb(
+                similarity_output, labels_file, similarity_output)
 
         # Create log file with appropriate versions
         versions = {'hp': self.config.hp_version,
@@ -686,10 +826,12 @@ class PipelineRunner:
         if ont2 != 'hp':
             versions[ont2] = getattr(self.config, f"{ont2}_version")
 
-        self.create_log_file(output_name, versions, f"{output_name}_log.yaml")
+        annotation_key = 'hpoa' if ont2 == 'hp' else f"{ont2.lower()}a"
+        self.create_log_file(output_name, versions, f"{output_name}_log.yaml",
+                             annotation_key=annotation_key)
 
         # Create tarball
-        tarball_name = f"{output_prefix}.tar.gz"
+        tarball_name = f"{output_prefix}.tsv.tar.gz"
         files = [
             f"{output_name}.tsv",
             f"{output_name}_log.yaml",
@@ -792,6 +934,22 @@ def main():
     )
 
     parser.add_argument(
+        '--animal-annotations',
+        choices=sorted(ANNOTATION_SOURCES),
+        default='monarch-kg',
+        help='Source of mouse/zebrafish gene-phenotype annotations used for HP-MP / HP-ZP '
+             'information content: the current Monarch KG export (default), or the frozen '
+             'final dipper-era KG (monarch-kg-2021-09). HP-MP/HP-ZP outputs are tagged '
+             '"_kg-<release>". Use a separate --working-dir per source.'
+    )
+    parser.add_argument(
+        '--engine',
+        choices=ENGINES,
+        default='semsimian',
+        help='Similarity engine: semsimian via runoak (default), or ducksim, DuckDB SQL that '
+             'reproduces semsimian\'s rows and scores (ties in ancestor_id may differ)'
+    )
+    parser.add_argument(
         '--custom-phenio',
         type=str,
         help='Path to custom PHENIO Semantic SQL database file (e.g., phenio.db)'
@@ -829,6 +987,12 @@ def main():
     )
 
     parser.add_argument(
+        '--upload-only',
+        action='store_true',
+        help='Skip setup and comparisons; upload existing tarballs for the selected '
+             'comparison(s) to Zenodo (use when comparisons ran as separate jobs)'
+    )
+    parser.add_argument(
         '--test-mode',
         action='store_true',
         help='Testing mode: download all files but skip similarity comparisons'
@@ -851,7 +1015,9 @@ def main():
         args.custom_phenio) if args.custom_phenio else None
     config = PipelineConfig(
         working_dir=Path(args.working_dir),
-        custom_phenio=custom_phenio_path
+        custom_phenio=custom_phenio_path,
+        animal_annotations=args.animal_annotations,
+        engine=args.engine
     )
     config.resnik_threshold = args.resnik_threshold
     zenodo_version = args.zenodo_version or config.release_date
@@ -871,11 +1037,15 @@ def main():
         comparisons_run: List[str] = []
 
         # Run setup unless skipped
-        if not args.skip_setup:
+        if args.upload_only:
+            logger.info("Upload-only mode: skipping setup and comparisons")
+            config.load_annotation_state()
+        elif not args.skip_setup:
             runner.setup()
         else:
             logger.info("Skipping setup stage")
             runner.setup_working_directory()
+            config.load_annotation_state()
             # Try to load versions from files if they exist
             for ont in ['hp', 'mp', 'zp', 'phenio']:
                 version_file = config.working_dir / f"{ont}_version"
@@ -884,7 +1054,11 @@ def main():
                             version_file.read_text().strip())
 
         # Run requested comparisons (skip if in test mode)
-        if args.test_mode:
+        if args.upload_only:
+            selected = ['hp_vs_hp', 'hp_vs_mp', 'hp_vs_zp'] if args.comparison == 'all' \
+                else [args.comparison.replace('-', '_vs_')]
+            comparisons_run = selected
+        elif args.test_mode:
             logger.info("=" * 80)
             logger.info(
                 "TEST MODE: Setup complete, skipping similarity comparisons")
@@ -920,7 +1094,7 @@ def main():
             tarballs = []
             for comparison in comparisons_run:
                 prefix = getattr(config, f"{comparison}_prefix")
-                tarballs.append(config.working_dir / f"{prefix}.tar.gz")
+                tarballs.append(config.working_dir / f"{prefix}.tsv.tar.gz")
 
             runner.upload_results_to_zenodo(
                 record_id=args.zenodo_record_id,

@@ -1,6 +1,13 @@
 # Python dependencies for phenotype comparison pipeline
-# Install with: pip install -r requirements.txt
+# Install with: pip install -r requirements.txt  (Python >= 3.10; oaklib 0.7 requires it)
 
-# Ontology Access Kit with semsimian support
-# This includes semantic similarity analysis capabilities
-oaklib[semsimian]
+# Ontology Access Kit. Its [semsimian] extra no longer installs semsimian as of oaklib 0.7,
+# so semsimian is listed explicitly.
+oaklib>=0.7.4
+semsimian>=0.3.0
+
+# oaklib's eutils dependency still imports pkg_resources, removed in setuptools 81
+setuptools<81
+
+# DuckDB, for --engine ducksim (experimental/ducksim_all_by_all.py)
+duckdb>=1.4
